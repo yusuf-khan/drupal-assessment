@@ -49,7 +49,7 @@ sso_dashboards/
     user.role.exhibitor.yml
   config/schema/sso_dashboards.schema.yml
   src/
-    Hook/OpenIdConnectHooks.php
+    Hook/LoginHooks.php
     Controller/DashboardController.php
     Service/RoleMapper.php
     Service/JsonPlaceholderClient.php
@@ -66,7 +66,7 @@ Target: Drupal 11, PHP 8.3, `core_version_requirement: ^11`.
 
 - `openid_connect_pre_authorize` requires verified ID-token claims for the Auth0 client. `openid_connect_post_authorize` synchronizes roles after OpenID Connect creates or loads the Drupal account and completes login.
 - `RoleMapper::sync(UserInterface $account, array $claimRoles)`:
-  - Allow-list: only `member` and `exhibitor` are managed. Unknown claim values are ignored.
+  - Allow-list: only the Drupal roles `member` and `exhibitor` are managed. Configure the Auth0 role names accepted for each Drupal role. Unmapped claim values are ignored.
   - Add managed roles present in the claim; **remove** managed roles absent from the claim (so revoking in Auth0 revokes in Drupal on next login). Never touch other roles (e.g. `administrator`).
   - Save only if the role set changed.
 - No role in claim: user is logged in with no managed role and lands on a neutral page (see 5.2), and is denied both dashboards.
@@ -76,7 +76,7 @@ Target: Drupal 11, PHP 8.3, `core_version_requirement: ^11`.
 
 - After login, send `member` to `/dashboard/member`, `exhibitor` to `/dashboard/exhibitor`, and role-less users to `/` with a short message.
 - Set the redirect with OpenID Connect’s session destination API on successful Auth0 login.
-- Must not override explicit admin logins or other login paths.
+- The local username-and-password form also redirects users with a dashboard role. Local accounts without a dashboard role keep the Drupal profile destination. Explicit local destinations take precedence.
 
 ### 5.3 Routes and access control
 
@@ -117,14 +117,14 @@ sso_dashboards.exhibitor:
 - `DashboardController::member()` / `::exhibitor()` return render arrays: a heading, a definition list (member) or an `<ul>`/table (exhibitor). Plain text is enough.
 - Show the Drupal username and role at the top for validation screenshots.
 - Error handling: catch client exceptions, log via `logger.channel.sso_dashboards`, render a friendly "service unavailable" message with HTTP 200 (not a fatal error).
-- Caching: per-user context plus a short `max-age` (e.g. 60s) so the page demonstrably performs real calls but is not hammered. For the demo/validation, config option to set `max-age` to 0.
+- Caching: share only validated public results with a 60-second Drupal cache lifetime. Render the current user identity on each request. Set `cache_max_age` to 0 to bypass the data cache.
 - Escape all remote data (render via `#plain_text` / Twig autoescape).
 
 ## 6. Configuration and secrets
 
 - No secrets in the repo. Auth0 domain, client ID and client secret are supplied via `settings.local.php` / environment variables and the contrib module's config override; the repo contains placeholders (`.env.example`, `settings.local.php.example`).
 - Exported config in `config/sync` excludes secrets.
-- `sso_dashboards.settings`: `client_id`, `role_claim`, `redirect_priority`, `rest_base_url`, `soap_endpoint`, `cache_max_age`.
+- `sso_dashboards.settings`: `client_id`, `role_claim`, `role_mapping`, `redirect_priority`, `rest_base_url`, `soap_endpoint`, `cache_max_age`.
 
 ## 7. Testing and validation
 
@@ -161,9 +161,9 @@ sso_dashboards.exhibitor:
 ## 9. Implementation decisions
 
 1. **Contrib module:** `openid_connect` Generic client, pinned to the 3.x revision that supports strict ID-token verification.
-2. **Role source in Auth0:** Administrator-managed `app_metadata.roles` copied to a namespaced ID-token claim in a Post Login Action.
+2. **Role source in Auth0:** Assigned role names read from `event.authorization.roles` and copied to a namespaced ID-token claim in a Post Login Action. Administrator-managed `app_metadata.roles` is an alternative when role assignments are unavailable.
 3. **Anonymous behavior:** HTTP 403.
 4. **SOAP method:** SOAP 1.1 envelope over Drupal’s Guzzle client, with namespace-aware DOM parsing.
 5. **Dual-role users:** Both routes are available. Default redirect priority is exhibitor, then member.
 6. **Administrators:** Dashboard access still requires the specific dashboard role.
-7. **Caching:** 60 seconds per user by default. A zero TTL disables render caching for demonstrations.
+7. **Caching:** 60 seconds for shared upstream data by default. A zero TTL bypasses the data cache for demonstrations.

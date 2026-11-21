@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Drupal\sso_dashboards\Hook;
 
 use Drupal\Core\Config\ConfigFactoryInterface;
+use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Hook\Attribute\Hook;
 use Drupal\Core\Messenger\MessengerInterface;
+use Drupal\Core\Session\AccountInterface;
 use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\Core\StringTranslation\TranslationInterface;
 use Drupal\openid_connect\OpenIDConnectSessionInterface;
@@ -15,9 +17,9 @@ use Drupal\user\UserInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
- * Integrates role synchronization with successful Auth0 authorization.
+ * Synchronizes Auth0 roles and selects dashboard destinations after login.
  */
-final class OpenIdConnectHooks {
+final class LoginHooks {
 
   private const LOGIN_REQUEST = '_sso_dashboards_auth0_login';
 
@@ -65,16 +67,52 @@ final class OpenIdConnectHooks {
 
     $settings = $this->configFactory->get('sso_dashboards.settings');
     $claim = $context['user_data'][$settings->get('role_claim')] ?? NULL;
-    $this->mapper->sync($account, is_array($claim) && array_is_list($claim) ? $claim : []);
-    foreach (array_merge($settings->get('redirect_priority'), RoleMapper::ROLES) as $role) {
-      if (in_array($role, RoleMapper::ROLES, TRUE) && $account->hasRole($role)) {
-        $this->session->saveTargetLinkUri('/dashboard/' . $role);
-        return;
-      }
+    $this->mapper->sync(
+      $account,
+      is_array($claim) && array_is_list($claim) ? $claim : [],
+      $settings->get('role_mapping') ?? RoleMapper::DEFAULT_MAPPING,
+    );
+    if ($role = $this->preferredRole($account)) {
+      $this->session->saveTargetLinkUri('/dashboard/' . $role);
+      return;
     }
 
     $this->messenger->addStatus($this->translation->translate('You are signed in. No dashboard is assigned to your account.'));
     $this->session->saveTargetLinkUri('/<front>');
+  }
+
+  /**
+   * Adds a submit handler after Drupal authenticates the local user.
+   */
+  #[Hook('form_user_login_form_alter')]
+  public function alterLocalLogin(array &$form): void {
+    $form['#submit'][] = self::class . ':redirectLocalLogin';
+  }
+
+  /**
+   * Replaces the default profile redirect for a local dashboard user.
+   */
+  public function redirectLocalLogin(array &$form, FormStateInterface $formState): void {
+    if (!$this->currentUser->isAuthenticated() || $this->requestStack->getCurrentRequest()?->query->has('destination')) {
+      return;
+    }
+
+    if ($role = $this->preferredRole($this->currentUser)) {
+      $formState->setRedirect('sso_dashboards.' . $role);
+    }
+  }
+
+  /**
+   * Returns the account's highest-priority dashboard role.
+   */
+  private function preferredRole(AccountInterface $account): ?string {
+    $priority = $this->configFactory->get('sso_dashboards.settings')->get('redirect_priority');
+    foreach (array_merge($priority, RoleMapper::ROLES) as $role) {
+      if (in_array($role, RoleMapper::ROLES, TRUE) && $account->hasRole($role)) {
+        return $role;
+      }
+    }
+    return NULL;
   }
 
 }

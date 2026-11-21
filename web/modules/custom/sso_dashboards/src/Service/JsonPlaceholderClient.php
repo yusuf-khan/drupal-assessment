@@ -23,13 +23,21 @@ final class JsonPlaceholderClient {
    */
   public function getUser(int $id = 1): array {
     $base = $this->configFactory->get('sso_dashboards.settings')->get('rest_base_url');
+    if (!is_string($base) || parse_url($base, PHP_URL_SCHEME) !== 'https' || !parse_url($base, PHP_URL_HOST)) {
+      throw new UpstreamException('JSONPlaceholder requires a valid HTTPS endpoint.');
+    }
     try {
       $response = $this->httpClient->request('GET', rtrim($base, '/') . '/users/' . $id, [
         'timeout' => 5,
+        'allow_redirects' => FALSE,
         'connect_timeout' => 3,
         'headers' => ['Accept' => 'application/json'],
       ]);
-      $data = json_decode((string) $response->getBody(), TRUE, 512, JSON_THROW_ON_ERROR);
+      $body = (string) $response->getBody();
+      if ($response->getStatusCode() !== 200 || strlen($body) > 1_048_576) {
+        throw new UpstreamException('JSONPlaceholder returned an unexpected HTTP response.');
+      }
+      $data = json_decode($body, TRUE, 32, JSON_THROW_ON_ERROR);
     }
     catch (GuzzleException | \JsonException $exception) {
       throw new UpstreamException('JSONPlaceholder request or decoding failed.', 0, $exception);

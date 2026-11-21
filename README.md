@@ -57,7 +57,12 @@ ddev drush user:login --name=assessment_exhibitor
 
 Open each link in a separate browser session. Visit `/dashboard/member` as
 the member and `/dashboard/exhibitor` as the exhibitor. The other dashboard
-should return HTTP 403. This preview tests local roles,
+should return HTTP 403.
+
+The standard Drupal username-and-password form at `/user/login` also
+redirects local member and exhibitor accounts to their dashboards. Local
+accounts without a dashboard role keep Drupal’s default destination. An
+explicit local `destination` takes precedence. This preview tests local roles,
 route access, and rendering. The Auth0 steps below exercise the login
 redirect, claim synchronization, and single sign-out.
 
@@ -90,32 +95,30 @@ reconciliation, dashboard selection, route access, and API rendering.
    URLs. Use the actual Drupal origin if it differs. Enable RP-Initiated Logout
    endpoint discovery if the tenant does not publish `end_session_endpoint`.
    [Auth0 OIDC logout settings](https://auth0.com/docs/authenticate/login/logout/log-users-out-of-auth0)
-3. Create two test users and set their administrator-managed **app_metadata**
-   to `{"roles":["member"]}` and `{"roles":["exhibitor"]}`, respectively.
-4. Deploy the following Action and add it to the application's Post Login flow.
-   Replace the placeholder with this app's client ID to scope the custom claim.
+3. Create two test users. If Auth0 exposes role assignments in your tenant,
+   create the `member` and `exhibitor` roles under **User Management → Roles**
+   and assign one role to each test user from their **Roles** tab.
+4. Create an **Add Drupal Roles** Action for the Post Login trigger. Use the
+   [Auth0 Roles Action](auth0/post-login-roles.js) and replace the client ID
+   placeholder with the Drupal application's client ID. Click **Deploy**.
+   Under **Actions → Triggers → Post Login**, place the Action between
+   **Start** and **Complete**, then click **Apply**. Both steps matter. An
+   empty flow issues the ID token without the role claim.
 
-```javascript
-exports.onExecutePostLogin = async (event, api) => {
-  if (event.client.client_id !== 'REPLACE_WITH_THIS_APPLICATION_CLIENT_ID') {
-    return;
-  }
-
-  const roles = event.user.app_metadata?.roles;
-  const managedRoles = Array.isArray(roles)
-    ? roles.filter((role) => role === 'member' || role === 'exhibitor')
-    : [];
-  api.idToken.setCustomClaim('https://sso-prototype.example/roles', managedRoles);
-};
-```
-
-This setup uses one Action and administrator-managed app metadata so it can be
-tested on a Free tenant. Check the tenant's subscription for its current Actions
-quota. Auth0 RBAC entitlements vary by plan, and a trial can expose features
-that disappear after it ends. On a tenant with RBAC, the Action can read
-`event.authorization?.roles` using the same claim contract.
+If your plan does not expose role assignments, store the role names in
+administrator-managed `app_metadata` instead. Set
+`{"roles":["member"]}` and `{"roles":["exhibitor"]}` on the two accounts.
+Change the Action's role source line to
+`const roles = event.user.app_metadata?.roles;`. The claim and Drupal
+mapping use the same contract. This approach uses one Action and avoids
+depending on trial-only RBAC features. Check the subscription for its
+current Actions and RBAC entitlements.
 [Auth0 plan comparison](https://auth0.com/pricing) ·
 [Auth0 role claim documentation](https://support.auth0.com/center/s/article/add-roles-and-permissions-to-the-id-token-using-actions)
+
+After a change, sign out and start a new Auth0 login. If Drupal only shows
+the **Authenticated user** role, check the Action binding, the exact claim
+name, and the configured role names before retrying.
 
 ### Configure Drupal
 
@@ -155,14 +158,36 @@ administrators and uid 1. Anonymous and wrong-role requests receive HTTP 403
 A dual-role user can open both dashboards
 and lands on the exhibitor dashboard by default. An empty or absent claim
 clears both managed roles and redirects home. To change the claim or role
-priority, update `sso_dashboards.settings`. The default dashboard render-cache lifetime
-is 60 seconds per user. To disable it during validation, run
-`ddev drush config:set sso_dashboards.settings cache_max_age 0 -y`.
+priority, update `sso_dashboards.settings`. Drupal shares successful public API results between dashboard users for
+60 seconds. Each response renders the signed-in identity from the current
+account. Endpoint and cache configuration changes invalidate the stored
+results. The exhibitor table is included in the initial HTML. A cold cache
+can wait for the upstream SOAP response.
+
+Set `cache_max_age` to `0` to bypass the data cache during validation.
+
+```sh
+ddev drush config:set sso_dashboards.settings cache_max_age 0 -y
+```
+
+Auth0 role names can differ from Drupal’s two dashboard role IDs. To map
+additional names, configure each Drupal dashboard role’s list of accepted
+Auth0 names. Matching is case-sensitive. For example:
+
+```sh
+ddev drush config:set sso_dashboards.settings role_mapping.member '[member, Customer]' --input-format=yaml -y
+ddev drush config:set sso_dashboards.settings role_mapping.exhibitor '[exhibitor, Trade Partner]' --input-format=yaml -y
+```
+
+Run `ddev drush updb -y` on existing installations. If you use custom Auth0 role
+names, redeploy the updated Action so it includes those names in the verified
+ID-token claim. The mapping is applied on the next Auth0 login.
 
 The exhibitor client sends SOAP 1.1 `ListOfCountryNamesByName` to Beeceptor
 with the action and request namespace declared by its WSDL. The mock response
 uses the original CountryInfo namespace, which the parser handles explicitly.
-Drupal calls both public APIs server-side without API keys. The member record
+Drupal calls both public APIs server-side over HTTPS without API keys. The
+clients reject redirects and unexpected response statuses. The member record
 is fictional sample data from JSONPlaceholder.
 [Beeceptor SOAP documentation](https://app.beeceptor.com/virtual-sandbox/soap-service-free) ·
 [Country Information WSDL](https://soap-service-free.mock.beeceptor.com/CountryInfoService?WSDL)
@@ -170,7 +195,7 @@ is fictional sample data from JSONPlaceholder.
 ## Verification
 
 Run the unit, kernel, and browser tests in DDEV. The tests use isolated database
-tables and HTTP fixtures. The DDEV run passed 12 tests with 66 assertions.
+tables and HTTP fixtures. The DDEV run passed 12 tests with 85 assertions.
 The login kernel test exercises account creation and reuse with a mocked
 ID-token validator.
 
@@ -182,15 +207,15 @@ ddev exec env SIMPLETEST_BASE_URL=http://localhost \
 
 | Check | Expected result | Evidence |
 | --- | --- | --- |
-| First and subsequent sign-ins | First sign-in creates the Drupal account. Subsequent sign-ins reuse it | Kernel test with mocked ID-token validator |
-| Member signs in with Auth0 | Drupal assigns `member` and opens `/dashboard/member` | Live tenant validation pending |
-| Exhibitor signs in with Auth0 | Drupal assigns `exhibitor` and opens `/dashboard/exhibitor` | Live tenant validation pending |
+| First and subsequent sign-ins | First sign-in creates the Drupal account. Subsequent sign-ins reuse it | Live Auth0 account creation confirmed. Kernel test covers repeated sign-in |
+| Member signs in with Auth0 | Drupal assigns `member` and opens `/dashboard/member` | Verified with the live Auth0 tenant. Member dashboard returned HTTP 200 and exhibitor dashboard returned HTTP 403 |
+| Exhibitor signs in with Auth0 | Drupal assigns `exhibitor` and opens `/dashboard/exhibitor` | Auth0-linked Drupal account has `exhibitor`. A fresh exhibitor sign-in and redirect replay is pending |
 | Member opens exhibitor URL | HTTP 403 | Browser test |
 | Exhibitor opens member URL | HTTP 403 | Browser test |
 | Anonymous opens either URL | HTTP 403 | Browser test |
 | Member dashboard | Shows the sample user's name, email and company | Browser test with REST fixture. The live Drupal client returned Leanne Graham, Sincere@april.biz, and Romaguera-Crona |
 | Exhibitor dashboard | Shows country names and ISO codes | Browser test with SOAP fixture. The live Drupal client returned 246 entries, starting with Åland Islands (AX) |
-| Auth0 logout | Both sessions end and dashboards return 403 | Live tenant validation pending |
+| Auth0 logout | Both sessions end and dashboards return 403 | Live member test followed the Auth0 logout endpoint, returned to Drupal, and received 403 on both dashboards. Auth0 prompted for credentials on the next sign-in |
 | Auth0 role revoked | Next login removes the Drupal role | Kernel test with mocked ID-token validator. Live tenant validation pending |
 | Upstream outage | Dashboard returns HTTP 200 with a service-unavailable message | Browser test with simulated HTTP 503 |
 
@@ -205,9 +230,9 @@ The browser also checked HTTP 403 for both dashboard URLs while anonymous.
 - [Exhibitor denied member dashboard](screenshots/exhibitor-member-denied.png)
 - [Anonymous visitor denied member dashboard](screenshots/anonymous-member-denied.png)
 
-Live Auth0 account creation, role mapping, redirects, logout, and revocation
-still need a configured tenant. Capture that evidence separately and keep
-credentials and tokens out of screenshots.
+Live Auth0 account creation, member role mapping, redirect, access control,
+and logout were verified. A fresh exhibitor sign-in and logout replay and
+live role revocation remain in the validation checklist.
 
 ## Submission notes
 

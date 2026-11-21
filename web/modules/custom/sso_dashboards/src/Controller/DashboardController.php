@@ -5,20 +5,17 @@ declare(strict_types=1);
 namespace Drupal\sso_dashboards\Controller;
 
 use Drupal\Core\Controller\ControllerBase;
-use Drupal\Core\Security\TrustedCallbackInterface;
-use Drupal\sso_dashboards\Service\CountryInfoSoapClient;
-use Drupal\sso_dashboards\Service\JsonPlaceholderClient;
+use Drupal\sso_dashboards\Service\DashboardData;
 use Drupal\sso_dashboards\Service\UpstreamException;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
  * Renders the member and exhibitor dashboards.
  */
-final class DashboardController extends ControllerBase implements TrustedCallbackInterface {
+final class DashboardController extends ControllerBase {
 
   public function __construct(
-    private readonly JsonPlaceholderClient $restClient,
-    private readonly CountryInfoSoapClient $soapClient,
+    private readonly DashboardData $dashboardData,
   ) {}
 
   /**
@@ -26,39 +23,17 @@ final class DashboardController extends ControllerBase implements TrustedCallbac
    */
   public static function create(ContainerInterface $container): static {
     return new static(
-      $container->get('sso_dashboards.rest_client'),
-      $container->get('sso_dashboards.soap_client'),
+      $container->get('sso_dashboards.data'),
     );
-  }
-
-  /**
-   * {@inheritdoc}
-   */
-  public static function trustedCallbacks(): array {
-    return ['buildMemberContent', 'buildExhibitorContent'];
-  }
-
-  /**
-   * Builds the member dashboard.
-   */
-  public function member(): array {
-    return $this->buildDashboard('member', 'buildMemberContent');
-  }
-
-  /**
-   * Builds the exhibitor dashboard.
-   */
-  public function exhibitor(): array {
-    return $this->buildDashboard('exhibitor', 'buildExhibitorContent');
   }
 
   /**
    * Fetches and renders the sample user.
    */
-  public function buildMemberContent(): array {
+  public function member(): array {
     $build = $this->buildContent($this->t('Member'));
     try {
-      $user = $this->restClient->getUser();
+      $user = $this->dashboardData->getUser();
       $build['data'] = ['#type' => 'html_tag', '#tag' => 'dl'];
       $fields = [
         'name' => [$this->t('Name'), $user['name']],
@@ -79,11 +54,11 @@ final class DashboardController extends ControllerBase implements TrustedCallbac
   /**
    * Fetches and renders the country list.
    */
-  public function buildExhibitorContent(): array {
+  public function exhibitor(): array {
     $build = $this->buildContent($this->t('Exhibitor'));
     try {
       $rows = [];
-      foreach ($this->soapClient->getCountries() as $country) {
+      foreach ($this->dashboardData->getCountries() as $country) {
         $rows[] = [
           ['data' => ['#plain_text' => $country['name']]],
           ['data' => ['#plain_text' => $country['isoCode']]],
@@ -102,30 +77,14 @@ final class DashboardController extends ControllerBase implements TrustedCallbac
   }
 
   /**
-   * Creates a lazily rendered dashboard with per-user cache keys.
-   */
-  private function buildDashboard(string $role, string $callback): array {
-    return [
-      'content' => [
-        '#lazy_builder' => [self::class . '::' . $callback, []],
-        '#create_placeholder' => TRUE,
-        '#cache' => [
-          'keys' => ['sso_dashboards', $role],
-          'contexts' => ['user'],
-          'tags' => ['config:sso_dashboards.settings'],
-          'max-age' => max(0, (int) $this->config('sso_dashboards.settings')->get('cache_max_age')),
-        ],
-      ],
-    ];
-  }
-
-  /**
    * Builds the identity line shared by both dashboards.
    */
   private function buildContent(string|\Stringable $role): array {
     $account = $this->currentUser();
     return [
-      '#cache' => ['tags' => ['user:' . $account->id()]],
+      // The upstream data has its own shared cache. Render the identity
+      // and dashboard on each request using the current account.
+      '#cache' => ['contexts' => ['user'], 'max-age' => 0],
       'identity' => [
         '#type' => 'html_tag',
         '#tag' => 'p',
@@ -142,7 +101,6 @@ final class DashboardController extends ControllerBase implements TrustedCallbac
    */
   private function addUpstreamError(array &$build, UpstreamException $exception): void {
     $this->getLogger('sso_dashboards')->warning('@message', ['@message' => $exception->getMessage()]);
-    $build['#cache']['max-age'] = 0;
     $build['data'] = ['#plain_text' => $this->t('The service is currently unavailable. Please try again later.')];
   }
 

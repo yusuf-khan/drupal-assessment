@@ -29,6 +29,9 @@ final class CountryInfoSoapClient {
    */
   public function getCountries(): array {
     $endpoint = $this->configFactory->get('sso_dashboards.settings')->get('soap_endpoint');
+    if (!is_string($endpoint) || parse_url($endpoint, PHP_URL_SCHEME) !== 'https' || !parse_url($endpoint, PHP_URL_HOST)) {
+      throw new UpstreamException('CountryInfo requires a valid HTTPS endpoint.');
+    }
     $soapNamespace = self::SOAP_NS;
     $countryNamespace = self::REQUEST_NS;
     $envelope = <<<XML
@@ -40,6 +43,7 @@ final class CountryInfoSoapClient {
     try {
       $response = $this->httpClient->request('POST', $endpoint, [
         'timeout' => 5,
+        'allow_redirects' => FALSE,
         'connect_timeout' => 3,
         'headers' => ['Content-Type' => 'text/xml; charset=utf-8', 'SOAPAction' => '"' . self::SOAP_ACTION . '"'],
         'body' => $envelope,
@@ -50,6 +54,9 @@ final class CountryInfoSoapClient {
     }
 
     $body = (string) $response->getBody();
+    if ($response->getStatusCode() !== 200 || strlen($body) > 1_048_576) {
+      throw new UpstreamException('CountryInfo returned an unexpected HTTP response.');
+    }
     $document = new \DOMDocument();
     if (trim($body) === '' || !$document->loadXML($body, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING) || $document->doctype !== NULL) {
       throw new UpstreamException('CountryInfo returned invalid XML.');

@@ -29,8 +29,13 @@ final class RoleMapperTest extends UnitTestCase {
     $account->expects($this->once())->method('save');
 
     $mapper = new RoleMapper();
-    $mapper->sync($account, ['exhibitor', 'unknown', ['member']]);
-    $mapper->sync($account, ['exhibitor', 'unknown']);
+    $mapping = [
+      'member' => ['Customer'],
+      'exhibitor' => ['Trade Partner', 'exhibitor'],
+      'administrator' => ['Trade Partner'],
+    ];
+    $mapper->sync($account, ['Trade Partner', 'unknown', ['Customer']], $mapping);
+    $mapper->sync($account, ['Trade Partner', 'unknown'], $mapping);
     $this->assertSame(['administrator', 'exhibitor'], $roles);
   }
 

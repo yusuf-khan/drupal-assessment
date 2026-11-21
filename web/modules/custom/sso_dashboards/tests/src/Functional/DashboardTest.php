@@ -23,8 +23,9 @@ final class DashboardTest extends BrowserTestBase {
 
     $member = $this->drupalCreateUser();
     $member->addRole('member')->save();
+    $this->useOneTimeLoginLinks = FALSE;
     $this->drupalLogin($member);
-    $this->drupalGet('dashboard/member');
+    $this->assertSession()->addressEquals('dashboard/member?check_logged_in=1');
     $this->assertSession()->statusCodeEquals(200);
     $this->assertSession()->pageTextContains($member->getAccountName());
     $this->assertSession()->elementTextContains('css', 'dd', '<em>Sample Member</em>');
@@ -32,6 +33,14 @@ final class DashboardTest extends BrowserTestBase {
     $this->assertSession()->pageTextContains('Sample Company');
     $this->drupalGet('dashboard/member');
     $this->assertSession()->statusCodeEquals(200);
+    $this->assertSame(1, $this->container->get('keyvalue')->get('state')->get('sso_dashboards_test.requests'));
+
+    $secondMember = $this->drupalCreateUser();
+    $secondMember->addRole('member')->save();
+    $this->drupalLogin($secondMember);
+    $this->assertSession()->pageTextContains($secondMember->getAccountName());
+    $this->assertSession()->pageTextNotContains($member->getAccountName());
+    $this->assertSession()->pageTextContains('Sample Company');
     $this->assertSame(1, $this->container->get('keyvalue')->get('state')->get('sso_dashboards_test.requests'));
     $this->drupalGet('dashboard/exhibitor');
     $this->assertSession()->statusCodeEquals(403);
@@ -45,13 +54,17 @@ final class DashboardTest extends BrowserTestBase {
     $exhibitor = $this->drupalCreateUser();
     $exhibitor->addRole('exhibitor')->save();
     $this->drupalLogin($exhibitor);
-    $this->drupalGet('dashboard/exhibitor');
+    $this->assertSession()->addressEquals('dashboard/exhibitor?check_logged_in=1');
     $this->assertSession()->statusCodeEquals(200);
     $this->assertSession()->pageTextContains($exhibitor->getAccountName());
     $this->assertSession()->elementTextContains('css', 'td', 'Canada');
     $this->assertSession()->pageTextContains('CA');
     $this->drupalGet('dashboard/member');
     $this->assertSession()->statusCodeEquals(403);
+
+    $localUser = $this->drupalCreateUser();
+    $this->drupalLogin($localUser);
+    $this->assertSession()->addressEquals('user/' . $localUser->id() . '?check_logged_in=1');
   }
 
 }

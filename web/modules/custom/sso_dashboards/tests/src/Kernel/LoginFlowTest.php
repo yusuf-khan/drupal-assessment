@@ -43,11 +43,14 @@ final class LoginFlowTest extends KernelTestBase {
       ],
     ]);
 
+    $this->config('sso_dashboards.settings')
+      ->set('role_mapping', ['member' => ['Customer'], 'exhibitor' => ['Trade Partner']])
+      ->save();
     $claims = [
       'sub' => 'auth0|sample',
       'email' => 'sample@example.test',
       'email_verified' => TRUE,
-      'https://sso-prototype.example/roles' => ['member', 'exhibitor'],
+      'https://sso-prototype.example/roles' => ['Customer', 'Trade Partner', 'administrator'],
     ];
     $validator = $this->createMock(OpenIDConnectIdTokenValidatorInterface::class);
     $validator->method('isAvailable')->willReturn(TRUE);
