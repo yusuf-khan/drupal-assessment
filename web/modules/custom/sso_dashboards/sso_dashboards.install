@@ -1,0 +1,16 @@
+<?php
+
+/**
+ * @file
+ * Updates for SSO Dashboards.
+ */
+
+/**
+ * Switch the original default SOAP URL to the Beeceptor assignment endpoint.
+ */
+function sso_dashboards_update_11001(): void {
+  $config = \Drupal::configFactory()->getEditable('sso_dashboards.settings');
+  if ($config->get('soap_endpoint') === 'https://webservices.oorsprong.org/websamples.countryinfo/CountryInfoService.wso') {
+    $config->set('soap_endpoint', 'https://soap-service-free.mock.beeceptor.com/CountryInfoService.wso')->save();
+  }
+}

@@ -1,0 +1,8 @@
+client_id: 'auth0'
+role_claim: 'https://sso-prototype.example/roles'
+redirect_priority:
+  - exhibitor
+  - member
+rest_base_url: 'https://jsonplaceholder.typicode.com'
+soap_endpoint: 'https://soap-service-free.mock.beeceptor.com/CountryInfoService.wso'
+cache_max_age: 60

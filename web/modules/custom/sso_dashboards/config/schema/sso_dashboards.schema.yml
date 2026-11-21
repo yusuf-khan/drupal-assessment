@@ -1,0 +1,25 @@
+sso_dashboards.settings:
+  type: config_object
+  label: 'SSO dashboard settings'
+  mapping:
+    client_id:
+      type: string
+      label: 'Auth0 OpenID Connect client machine name'
+    role_claim:
+      type: string
+      label: 'Namespaced ID token role claim'
+    redirect_priority:
+      type: sequence
+      label: 'Dashboard redirect priority'
+      sequence:
+        type: string
+        label: 'Drupal role ID'
+    rest_base_url:
+      type: uri
+      label: 'JSONPlaceholder base URL'
+    soap_endpoint:
+      type: uri
+      label: 'CountryInfo SOAP endpoint'
+    cache_max_age:
+      type: integer
+      label: 'Dashboard cache lifetime in seconds'
