@@ -6,19 +6,26 @@ and [AI development log](agent-logs.md).
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    A["Drupal login page"] --> B["Auth0 Universal Login"]
-    B --> C["Post Login Action adds roles to the ID token"]
-    C --> D["Drupal verifies the token and creates or loads the account"]
-    D --> E{"Sync roles and choose dashboard"}
-    E -->|member| F["/dashboard/member"]
-    E -->|exhibitor| G["/dashboard/exhibitor"]
-    E -->|No dashboard role| H["Home with a status message"]
-    F -->|Member access check passes| I["JSONPlaceholder REST user"]
-    G -->|Exhibitor access check passes| J["Beeceptor SOAP country list"]
-    F -->|Access check fails| K["HTTP 403"]
-    G -->|Access check fails| K
+```text
+Drupal login page
+  |
+  v
+Auth0 Universal Login
+  |
+  v
+Auth0 Post Login Action adds roles to the ID token
+  |
+  v
+Drupal verifies the token and creates or loads the local account
+  |
+  v
+Drupal synchronizes roles and chooses the destination
+  |
+  +-- member ----> /dashboard/member ----> JSONPlaceholder REST
+  |
+  +-- exhibitor -> /dashboard/exhibitor -> Beeceptor SOAP
+  |
+  +-- no dashboard role -> Home with a status message
 ```
 
 Drupal checks the required role on every dashboard request, including direct
