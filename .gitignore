@@ -8,6 +8,7 @@
 /drush/Commands/contrib/
 
 # Local Drupal settings may contain database credentials and hash salts.
+/web/sites/*/settings.secret.php
 /web/sites/*/settings.php
 /web/sites/*/settings.*.php
 /web/sites/*/services.local.yml

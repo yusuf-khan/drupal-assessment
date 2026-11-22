@@ -103,19 +103,45 @@ If your Auth0 plan does not expose role assignments, use administrator-managed
 Set the Action's role source to `const roles = event.user.app_metadata?.roles;`.
 Both sources use the same Drupal mapping. [Auth0 plans](https://auth0.com/pricing)
 
-Copy `settings.local.php.example` to `web/sites/default/settings.local.php`
-on a fresh clone, then uncomment the local settings include in
-`web/sites/default/settings.php`. Supply `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`,
-and `AUTH0_CLIENT_SECRET` through the PHP process environment or fill the
-fallback values in the ignored local file. Use the tenant hostname without
-`https://` or a trailing slash. Keep local credentials out of Git.
+The `sso_dashboards` module installs the Auth0 OpenID Connect client. To keep
+credentials out of exported configuration, create
+`web/sites/default/settings.secret.php` locally with the Auth0 Client ID and
+Client Secret:
 
-Run these commands once on a fresh installation. They create the Drupal
-client, enable first-login provisioning and logout, and keep automatic
-email-based linking disabled.
+```php
+<?php
+$config['openid_connect.client.auth0']['settings']['client_id'] = 'YOUR_AUTH0_CLIENT_ID';
+$config['openid_connect.client.auth0']['settings']['client_secret'] = 'YOUR_AUTH0_CLIENT_SECRET';
+```
+
+Replace the placeholders locally and do not commit this file; `.gitignore`
+excludes it. Ask the site owner/interviewer to add this include near the end of
+`web/sites/default/settings.php`:
+
+```php
+if (file_exists($app_root . '/' . $site_path . '/settings.secret.php')) {
+  include $app_root . '/' . $site_path . '/settings.secret.php';
+}
+```
+
+The override applies at runtime and does not save credentials to Drupal
+configuration. The Auth0 client secret is not base64 encoded.
+
+Enable `sso_dashboards` on a fresh installation. On existing installations,
+include the populated secret file first, then clear any previously saved
+credentials from the client config:
 
 ```sh
-ddev drush php:eval '\Drupal\openid_connect\Entity\OpenIDConnectClientEntity::create(["id" => "auth0", "label" => "Auth0", "plugin" => "generic", "status" => TRUE])->save();'
+ddev drush php:eval '$config = \Drupal::configFactory()->getEditable("openid_connect.client.auth0"); $config->clear("settings.client_id")->clear("settings.client_secret")->save();'
+ddev drush cr
+```
+
+The settings override continues supplying the credentials at runtime.
+
+Run these commands once to enable first-login provisioning and logout and to
+keep automatic email-based linking disabled:
+
+```sh
 ddev drush config:set user.settings register admin_only -y
 ddev drush config:set openid_connect.settings override_registration_settings true --input-format=yaml -y
 ddev drush config:set openid_connect.settings connect_existing_users false --input-format=yaml -y
