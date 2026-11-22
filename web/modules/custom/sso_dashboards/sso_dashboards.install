@@ -13,8 +13,12 @@ use Drupal\sso_dashboards\Service\RoleMapper;
 function sso_dashboards_install(): void {
   $settings = \Drupal::configFactory()->getEditable('openid_connect.settings');
   if ($settings->get('user_login_display') === 'hidden') {
-    $settings->set('user_login_display', 'below')->save();
+    $settings->set('user_login_display', 'below');
   }
+  if ($settings->get('redirect_logout') === '') {
+    $settings->set('redirect_logout', '/user/login');
+  }
+  $settings->set('override_registration_settings', TRUE)->save();
 }
 
 /**

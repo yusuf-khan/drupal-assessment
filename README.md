@@ -54,20 +54,27 @@ git clone https://github.com/yusuf-khan/drupal-assessment.git
 cd drupal-assessment
 ddev start
 ddev composer install
-ddev drush site:install standard --account-name=admin --account-pass=admin -y
+ddev drush site:install --existing-config --db-url=mysql://db:db@db/db --account-name=admin -y
 ddev launch
 ```
 
-In the browser installer, choose **Standard** and create a local
-administrator. Then enable the module from the repository root.
+Run the install command on a new DDEV database. Drupal installs the modules,
+the Auth0 client, and both dashboard roles from `config/sync`. Drush prints the
+local administrator credentials. Use `ddev describe` to confirm the site URL,
+which defaults to `https://drupal-assessment.ddev.site`.
 
-```sh
-ddev drush en sso_dashboards -y
-```
+### Configuration synchronization
 
-The site opens at `https://drupal-assessment.ddev.site`. The module creates
-the `member` and `exhibitor` roles if they are missing. Use `ddev describe`
-to confirm the site URL.
+Drupal reads `config/sync` from the repository root. On a site installed from
+this export, run `ddev drush config:status` to see differences and
+`ddev drush config:import` to review and import changes. The same screen is
+available at **Configuration → Development → Configuration synchronization**
+(`/admin/config/development/configuration`).
+
+Drupal requires a matching site UUID to import the full export. An
+independently installed site can continue using its current configuration.
+Before exporting active configuration, verify that any Auth0 credentials are
+supplied through the local settings file.
 
 ## Module evaluation
 
@@ -104,7 +111,7 @@ If your Auth0 plan does not expose role assignments, use administrator-managed
 Set the Action's role source to `const roles = event.user.app_metadata?.roles;`.
 Both sources use the same Drupal mapping. [Auth0 plans](https://auth0.com/pricing)
 
-The `sso_dashboards` module installs the Auth0 OpenID Connect client. To keep
+The configuration export includes the Auth0 OpenID Connect client. To keep
 credentials out of exported configuration, create
 `web/sites/default/settings.secret.php` locally with the Auth0 Client ID and
 Client Secret:
@@ -115,39 +122,16 @@ $config['openid_connect.client.auth0']['settings']['client_id'] = 'YOUR_AUTH0_CL
 $config['openid_connect.client.auth0']['settings']['client_secret'] = 'YOUR_AUTH0_CLIENT_SECRET';
 ```
 
-Replace the placeholders locally and do not commit this file; `.gitignore`
-excludes it. Ask the site owner/interviewer to add this include near the end of
-`web/sites/default/settings.php`:
+Replace the placeholders locally. The checked-in `settings.php` loads this
+ignored file, which supplies the credentials at runtime. If you use a different
+Auth0 tenant, update the issuer and endpoints in the Auth0 client settings at
+`/admin/config/people/openid-connect`.
 
-```php
-if (file_exists($app_root . '/' . $site_path . '/settings.secret.php')) {
-  include $app_root . '/' . $site_path . '/settings.secret.php';
-}
-```
-
-The override applies at runtime and does not save credentials to Drupal
-configuration. The Auth0 client secret is not base64 encoded.
-
-Enable `sso_dashboards` on a fresh installation. On existing installations,
-include the populated secret file first, then clear any previously saved
-credentials from the client config:
+If credentials were previously saved in active Drupal configuration, populate
+the local file first and then clear the saved values before exporting.
 
 ```sh
 ddev drush php:eval '$config = \Drupal::configFactory()->getEditable("openid_connect.client.auth0"); $config->clear("settings.client_id")->clear("settings.client_secret")->save();'
-ddev drush cr
-```
-
-The settings override continues supplying the credentials at runtime.
-
-Run these commands once to enable first-login provisioning and logout and to
-keep automatic email-based linking disabled:
-
-```sh
-ddev drush config:set user.settings register admin_only -y
-ddev drush config:set openid_connect.settings override_registration_settings true --input-format=yaml -y
-ddev drush config:set openid_connect.settings connect_existing_users false --input-format=yaml -y
-ddev drush config:set openid_connect.settings end_session_enabled true --input-format=yaml -y
-ddev drush config:set openid_connect.settings redirect_logout /user/login -y
 ddev drush cr
 ```
 
