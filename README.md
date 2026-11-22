@@ -113,19 +113,13 @@ Both sources use the same Drupal mapping. [Auth0 plans](https://auth0.com/pricin
 
 The configuration export includes the Auth0 OpenID Connect client.
 `web/sites/default/settings.secret.php` supplies the public Client ID for the
-bundled Auth0 application. Copy the [local settings template](settings.local.php.example)
-from the repository root:
+bundled Auth0 application. Create `.auth0-client-secret` at the repository root
+and put the current Auth0 Client Secret on a single line. Git ignores this
+file. Run `ddev drush cr` after updating it.
 
-```sh
-cp -n settings.local.php.example web/sites/default/settings.local.php
-```
-
-Open `web/sites/default/settings.local.php`, replace the placeholder with the
-Auth0 Client Secret, and run `ddev drush cr`. Git ignores this local file.
-If you use a different Auth0 application, set the Client ID in the same local
-file with `$config['openid_connect.client.auth0']['settings']['client_id']`.
-For a different Auth0 tenant, also update the issuer and endpoints at
-`/admin/config/people/openid-connect`.
+For a different Auth0 application, update the public Client ID in
+`web/sites/default/settings.secret.php`. For a different tenant, also update
+the issuer and endpoints at `/admin/config/people/openid-connect`.
 
 If credentials were previously saved in active Drupal configuration, populate
 the local file first and then clear the saved values before exporting.
@@ -135,9 +129,21 @@ ddev drush php:eval '$config = \Drupal::configFactory()->getEditable("openid_con
 ddev drush cr
 ```
 
-Open `/user/login` in a private window and choose **Auth0** below the local
-form. Sign in as each user in turn. Visit the other role’s route directly
-and verify HTTP 403. Use **Log out** to end the Drupal and Auth0 sessions.
+### Reviewer test accounts
+
+Use these accounts with the bundled Auth0 application. Obtain the test
+passwords from the submitter through a private channel. For a fresh local
+install, also obtain the application's client secret for `.auth0-client-secret`.
+
+| Auth0 username | Role | Expected destination | Direct request returns HTTP 403 |
+| --- | --- | --- | --- |
+| `khany762@gmail.com` | Member | `/dashboard/member` | `/dashboard/exhibitor` |
+| `nkhanyusuf338@gmail.com` | Exhibitor | `/dashboard/exhibitor` | `/dashboard/member` |
+
+Open `/user/login` in a private browser window and choose **Auth0**. Confirm
+that sign-in opens the expected dashboard and that visiting the other
+dashboard directly returns HTTP 403. Select **Log out** and confirm that
+both dashboards return HTTP 403. Repeat with the other account.
 
 ## Role mapping and dashboards
 

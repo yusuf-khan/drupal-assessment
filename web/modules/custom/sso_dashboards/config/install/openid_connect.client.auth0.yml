@@ -1,12 +1,9 @@
-uuid: be35ebd7-7706-431d-968f-3ceefe80591d
 langcode: en
 status: true
 dependencies:
   enforced:
     module:
       - sso_dashboards
-  module:
-    - openid_connect
 id: auth0
 label: Auth0
 plugin: generic

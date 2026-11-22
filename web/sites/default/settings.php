@@ -893,22 +893,16 @@ if (getenv('IS_DDEV_PROJECT') == 'true' && file_exists(__DIR__ . '/settings.ddev
   include __DIR__ . '/settings.ddev.php';
 }
 
-/**
- * Load local development override configuration, if available.
- *
- * Create a settings.local.php file to override variables on secondary (staging,
- * development, etc.) installations of this site.
- *
- * Typical uses of settings.local.php include:
- * - Disabling caching.
- * - Disabling JavaScript/CSS compression.
- * - Rerouting outgoing emails.
- *
- * Keep this code block at the end of this file to take full effect.
- */
+// Load the Auth0 application settings.
 if (file_exists($app_root . '/' . $site_path . '/settings.secret.php')) {
   include $app_root . '/' . $site_path . '/settings.secret.php';
 }
-if (file_exists($app_root . '/' . $site_path . '/settings.local.php')) {
-  include $app_root . '/' . $site_path . '/settings.local.php';
+
+// Keep the local Auth0 client secret outside the document root.
+$auth0_secret_file = dirname($app_root) . '/.auth0-client-secret';
+if (is_readable($auth0_secret_file)) {
+  $auth0_secret = trim((string) file_get_contents($auth0_secret_file));
+  if ($auth0_secret !== '') {
+    $config['openid_connect.client.auth0']['settings']['client_secret'] = $auth0_secret;
+  }
 }

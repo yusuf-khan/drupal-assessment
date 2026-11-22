@@ -1,3 +1,0 @@
-<?php
-
-$config['openid_connect.client.auth0']['settings']['client_secret'] = 'YOUR_AUTH0_CLIENT_SECRET';

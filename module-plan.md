@@ -125,8 +125,8 @@ sso_dashboards.exhibitor:
 
 ## 6. Configuration and secrets
 
-- No secrets in the repo. Auth0 domain, client ID and client secret are supplied via `settings.local.php` / environment variables and the contrib module's config override; the repo contains placeholders (`.env.example`, `settings.local.php.example`).
-- Ship defaults and role definitions in the module’s `config/install` and `config/optional` directories. Supply tenant credentials through ignored local settings or environment variables.
+- The bundled Auth0 issuer and public Client ID are application settings. Supply the client secret in the ignored `.auth0-client-secret` file outside the Drupal document root.
+- Ship portable defaults and role definitions in the module’s `config/install` and `config/optional` directories. The full-site export in `config/sync` supports installing the assessment with its site configuration.
 - `sso_dashboards.settings`: `client_id`, `role_claim`, `role_mapping`, `redirect_priority`, `rest_base_url`, `soap_endpoint`, `cache_max_age`.
 
 ## 7. Testing and validation
