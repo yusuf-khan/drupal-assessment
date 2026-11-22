@@ -1,8 +1,9 @@
 # Drupal Auth0 SSO Assessment
 
 A Drupal 11 prototype with Auth0 sign-in, role-based dashboard access, and
-server-side REST and SOAP integrations. See the [module plan](module-plan.md)
-and [AI development log](agent-logs.md).
+server-side REST and SOAP integrations. OpenAI Codex was the primary coding
+agent. See the [reviewed module plan](module-plan.md) and
+[AI development log](agent-logs.md) for decisions, review, and validation.
 
 ## Architecture
 
@@ -29,9 +30,7 @@ Drupal synchronizes roles and chooses the destination
 ```
 
 Drupal checks the required role on every dashboard request, including direct
-visits. It caches validated public API results for 60 seconds and renders the
-current user's identity on each response. The APIs use HTTPS and require no
-credentials.
+visits.
 
 ## Environment and dependencies
 
@@ -39,6 +38,7 @@ Install Git, Docker, and [DDEV](https://ddev.com/get-started/).
 
 | Component | Version |
 | --- | --- |
+| DDEV | 1.25.5 used for local testing |
 | Drupal core | 11.4.13 |
 | PHP and database in DDEV | PHP 8.4 and MariaDB 11.8 |
 | Drush | 13.8.1 |
@@ -56,6 +56,7 @@ ddev start
 ddev composer install
 ddev drush site:install --existing-config --db-url=mysql://db:db@db/db --account-name=admin -y
 ddev launch
+ddev drush cr
 ```
 
 Run the install command on a new DDEV database. Drupal installs the modules,
@@ -71,23 +72,23 @@ this export, run `ddev drush config:status` to see differences and
 available at **Configuration → Development → Configuration synchronization**
 (`/admin/config/development/configuration`).
 
-Drupal requires a matching site UUID to import the full export. An
-independently installed site can continue using its current configuration.
-Before exporting active configuration, verify that any Auth0 credentials are
-supplied through the local settings file.
+Drupal requires a matching site UUID to import the full export. Supply the
+Auth0 client secret through the ignored runtime file so it stays out of
+configuration exports.
 
 ## Module evaluation
 
 - **OpenID Connect** powers the current implementation. Its Generic client
-  supports Auth0, account provisioning, login hooks, and provider logout. The
-  pinned revision supports strict ID-token validation for role assignments.
+  supports Auth0, account provisioning, login hooks, and provider logout.
+  The pinned 3.x development revision supports strict ID-token validation.
+  The custom `sso_dashboards` module adds role reconciliation, redirects,
+  route access checks, and the REST and SOAP integrations.
 - **Drupal OIDC Client** was evaluated for its signed-token validation and
   realm management. OpenID Connect’s authorization hooks and login destination
   API fit the dashboard flow.
-- **miniOrange SAML SP** is the target for a separate pilot. Its Composer
-  edition passed an isolated Drupal 11 install check. The assessment install
-  uses OpenID Connect. Mapping assertion roles per user and SAML Single Logout
-  require the licensed miniOrange edition.
+- **miniOrange SAML SP** was evaluated on Drupal 11. Its licensed features for
+  assertion-based role mapping and single logout made it a poor fit for this
+  assessment.
   [miniOrange plan comparison](https://plugins.miniorange.com/drupal-saml-single-sign-on-sso#pricing)
 
 ## Auth0 and test users
@@ -106,10 +107,14 @@ supplied through the local settings file.
    placeholder, click **Deploy**, attach the Action under **Actions →
    Triggers → Post Login**, and click **Apply**.
 
-If your Auth0 plan does not expose role assignments, use administrator-managed
-`app_metadata` with `{"roles":["member"]}` and `{"roles":["exhibitor"]}`.
-Set the Action's role source to `const roles = event.user.app_metadata?.roles;`.
-Both sources use the same Drupal mapping. [Auth0 plans](https://auth0.com/pricing)
+The two-account live check used Auth0's native role assignments. Auth0 lists
+Role Management as a paid feature. For a Free tenant, set administrator-managed
+`app_metadata` to `{"roles":["member"]}` or `{"roles":["exhibitor"]}`
+and change the Action's role source to
+`const roles = event.user.app_metadata?.roles;`. Deploy the updated Action.
+Both sources use the same Drupal mapping. The metadata path avoids reliance
+on trial access to Role Management. It still needs a live replay on a Free
+tenant. [Auth0 plan comparison](https://auth0.com/pricing)
 
 The configuration export includes the Auth0 OpenID Connect client.
 `web/sites/default/settings.secret.php` supplies the public Client ID for the
@@ -120,14 +125,6 @@ file. Run `ddev drush cr` after updating it.
 For a different Auth0 application, update the public Client ID in
 `web/sites/default/settings.secret.php`. For a different tenant, also update
 the issuer and endpoints at `/admin/config/people/openid-connect`.
-
-If credentials were previously saved in active Drupal configuration, populate
-the local file first and then clear the saved values before exporting.
-
-```sh
-ddev drush php:eval '$config = \Drupal::configFactory()->getEditable("openid_connect.client.auth0"); $config->clear("settings.client_id")->clear("settings.client_secret")->save();'
-ddev drush cr
-```
 
 ### Reviewer test accounts
 
@@ -162,25 +159,17 @@ With both roles, the default destination is the exhibitor dashboard.
 Without a dashboard role, Drupal redirects home with a status message.
 Configure role aliases, priority, or cache lifetime in
 [`sso_dashboards.settings`](web/modules/custom/sso_dashboards/config/install/sso_dashboards.settings.yml).
-For example, accept both `member` and `Customer` from Auth0 with:
 
-```sh
-ddev drush config:set sso_dashboards.settings role_mapping.member '[member, Customer]' --input-format=yaml -y
-```
+### External APIs
 
-### Preview without Auth0
+- The member dashboard sends a server-side `GET /users/1` to JSONPlaceholder.
+  It displays the fictional user's name, email, and company. [REST endpoint](https://jsonplaceholder.typicode.com/users/1)
+- The exhibitor dashboard sends a SOAP `POST` for `ListOfCountryNamesByName`
+  to Beeceptor's `CountryInfoService.wso` endpoint and displays country names
+  and ISO codes. [Beeceptor SOAP documentation](https://app.beeceptor.com/virtual-sandbox/soap-service-free)
 
-Run these commands once to create local demo accounts and print one-time links.
-Open the two links in separate browser sessions.
-
-```sh
-ddev drush user:create assessment_member --mail=member@example.test
-ddev drush user:role:add member assessment_member
-ddev drush user:create assessment_exhibitor --mail=exhibitor@example.test
-ddev drush user:role:add exhibitor assessment_exhibitor
-ddev drush user:login --name=assessment_member --no-browser dashboard/member
-ddev drush user:login --name=assessment_exhibitor --no-browser dashboard/exhibitor
-```
+Both public HTTPS services require no API key. Drupal caches validated results
+for 60 seconds and renders the signed-in user's identity on each response.
 
 ## Validation results
 
@@ -198,6 +187,7 @@ ddev exec env SIMPLETEST_BASE_URL=http://localhost \
 
 | Check | Result |
 | --- | --- |
+| Fresh installation | Drupal installed from `config/sync`; a follow-up import reported no changes |
 | Live Auth0 member | Assigned `member`, redirected to the member dashboard, HTTP 200 for member and 403 for exhibitor |
 | Live Auth0 exhibitor | Assigned `exhibitor`, redirected to the exhibitor dashboard, HTTP 200 for exhibitor and 403 for member |
 | Live Auth0 logout | Both accounts returned to Drupal after Auth0 logout. Both dashboards returned 403 in each logged-out session. |
@@ -220,8 +210,14 @@ The screenshots use local Drupal demo accounts and live API data.
   repaired. Fresh installs create the required schema automatically.
 - **Pending live check.** Role revocation is covered by the automated
   login test. Live revocation has yet to be verified.
-- **SAML cutover.** The miniOrange target requires the licensed edition and
-  a separate Auth0 SAML application. The live prototype uses OpenID Connect.
-  The [SAML Post Login Action](auth0/post-login-saml-roles.js) and
-  [cutover plan](module-plan.md#10-miniorange-saml-pilot-with-auth0) are
-  available for that evaluation.
+- **Credential rotation.** The live Auth0 results above predate the current
+  credential issue. An application secret was committed to Git. Rotate it in
+  Auth0, remove the secret assignment from tracked settings, supply the fresh
+  value through `.auth0-client-secret`, and replay both logins before submission.
+
+## Submission
+
+The submission branch is `main`. Run `git rev-parse HEAD` on the final
+reviewed commit, then share that SHA and the repository URL privately with
+the interview team. Confirm reviewers can access the repository.
+[Assessment repository](https://github.com/yusuf-khan/drupal-assessment)
