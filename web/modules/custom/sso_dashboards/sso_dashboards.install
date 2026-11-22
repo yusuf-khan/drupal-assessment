@@ -2,10 +2,20 @@
 
 /**
  * @file
- * Updates for SSO Dashboards.
+ * Installation and updates for SSO Dashboards.
  */
 
 use Drupal\sso_dashboards\Service\RoleMapper;
+
+/**
+ * Implements hook_install().
+ */
+function sso_dashboards_install(): void {
+  $settings = \Drupal::configFactory()->getEditable('openid_connect.settings');
+  if ($settings->get('user_login_display') === 'hidden') {
+    $settings->set('user_login_display', 'below')->save();
+  }
+}
 
 /**
  * Switch the original default SOAP URL to the Beeceptor assignment endpoint.

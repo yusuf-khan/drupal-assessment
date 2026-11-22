@@ -11,6 +11,8 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
  * Renders the member and exhibitor dashboards.
+ *
+ * Access is enforced by the routes (_role requirement), not here.
  */
 final class DashboardController extends ControllerBase {
 
@@ -28,68 +30,81 @@ final class DashboardController extends ControllerBase {
   }
 
   /**
-   * Fetches and renders the sample user.
+   * Fetches and renders the sample user for members.
    */
   public function member(): array {
-    $build = $this->buildContent($this->t('Member'));
+    $build = $this->buildBase($this->t('Member'));
+
     try {
       $user = $this->dashboardData->getUser();
-      $build['data'] = ['#type' => 'html_tag', '#tag' => 'dl'];
-      $fields = [
-        'name' => [$this->t('Name'), $user['name']],
-        'email' => [$this->t('Email'), $user['email']],
-        'company' => [$this->t('Company'), $user['company']['name']],
-      ];
-      foreach ($fields as $key => [$label, $value]) {
-        $build['data'][$key . '_label'] = ['#type' => 'html_tag', '#tag' => 'dt', 'text' => ['#plain_text' => $label]];
-        $build['data'][$key] = ['#type' => 'html_tag', '#tag' => 'dd', 'text' => ['#plain_text' => $value]];
-      }
     }
     catch (UpstreamException $exception) {
-      $this->addUpstreamError($build, $exception);
+      return $this->buildFailure($build, $exception);
     }
+
+    $build['data'] = [
+      '#type' => 'inline_template',
+      '#template' => '<dl><dt>{{ name_label }}</dt><dd>{{ name }}</dd><dt>{{ email_label }}</dt><dd>{{ email }}</dd><dt>{{ company_label }}</dt><dd>{{ company }}</dd></dl>',
+      '#context' => [
+        'name_label' => $this->t('Name'),
+        'name' => (string) ($user['name'] ?? ''),
+        'email_label' => $this->t('Email'),
+        'email' => (string) ($user['email'] ?? ''),
+        'company_label' => $this->t('Company'),
+        'company' => (string) ($user['company']['name'] ?? ''),
+      ],
+    ];
+
     return $build;
   }
 
   /**
-   * Fetches and renders the country list.
+   * Fetches and renders the country list for exhibitors.
    */
   public function exhibitor(): array {
-    $build = $this->buildContent($this->t('Exhibitor'));
+    $build = $this->buildBase($this->t('Exhibitor'));
+
     try {
-      $rows = [];
-      foreach ($this->dashboardData->getCountries() as $country) {
-        $rows[] = [
-          ['data' => ['#plain_text' => $country['name']]],
-          ['data' => ['#plain_text' => $country['isoCode']]],
-        ];
-      }
-      $build['data'] = [
-        '#type' => 'table',
-        '#header' => [$this->t('Country'), $this->t('ISO code')],
-        '#rows' => $rows,
-      ];
+      $countries = $this->dashboardData->getCountries();
     }
     catch (UpstreamException $exception) {
-      $this->addUpstreamError($build, $exception);
+      return $this->buildFailure($build, $exception);
     }
+
+    $rows = [];
+    foreach ($countries as $country) {
+      if (!isset($country['name'], $country['isoCode'])) {
+        continue;
+      }
+      $rows[] = [
+        ['data' => ['#plain_text' => (string) $country['name']]],
+        ['data' => ['#plain_text' => (string) $country['isoCode']]],
+      ];
+    }
+
+    $build['data'] = [
+      '#type' => 'table',
+      '#header' => [$this->t('Country'), $this->t('ISO code')],
+      '#rows' => $rows,
+      '#empty' => $this->t('No countries were returned.'),
+    ];
+
     return $build;
   }
 
   /**
    * Builds the identity line shared by both dashboards.
    */
-  private function buildContent(string|\Stringable $role): array {
-    $account = $this->currentUser();
+  private function buildBase(string|\Stringable $role): array {
     return [
-      // The upstream data has its own shared cache. Render the identity
-      // and dashboard on each request using the current account.
+      // DashboardData caches public API results independently. Render the
+      // signed-in identity for the current account on each request.
       '#cache' => ['contexts' => ['user'], 'max-age' => 0],
       'identity' => [
         '#type' => 'html_tag',
         '#tag' => 'p',
         '#value' => $this->t('Signed in as @name (@role)', [
-          '@name' => $account->getAccountName(),
+          '@name' => $this->currentUser()->getDisplayName(),
           '@role' => $role,
         ]),
       ],
@@ -97,11 +112,21 @@ final class DashboardController extends ControllerBase {
   }
 
   /**
-   * Logs the failure and adds an uncached error message.
+   * Logs an upstream failure and returns a safe, uncacheable message.
    */
-  private function addUpstreamError(array &$build, UpstreamException $exception): void {
-    $this->getLogger('sso_dashboards')->warning('@message', ['@message' => $exception->getMessage()]);
-    $build['data'] = ['#plain_text' => $this->t('The service is currently unavailable. Please try again later.')];
+  private function buildFailure(array $build, UpstreamException $exception): array {
+    $this->getLogger('sso_dashboards')->warning('Upstream request failed: @message', [
+      '@message' => $exception->getMessage(),
+    ]);
+
+    $build['data'] = [
+      '#type' => 'html_tag',
+      '#tag' => 'p',
+      '#value' => $this->t('The service is currently unavailable. Please try again later.'),
+      '#attributes' => ['role' => 'status'],
+    ];
+
+    return $build;
   }
 
 }

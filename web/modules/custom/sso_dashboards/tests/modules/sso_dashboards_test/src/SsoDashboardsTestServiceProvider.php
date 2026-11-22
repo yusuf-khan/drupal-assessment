@@ -23,10 +23,13 @@ final class SsoDashboardsTestServiceProvider extends ServiceProviderBase {
 
   public static function createHttpClient(): Client {
     $handler = static function (RequestInterface $request): Response {
-      $state = \Drupal::state();
-      $state->set('sso_dashboards_test.requests', $state->get('sso_dashboards_test.requests', 0) + 1);
+      $requestPath = $request->getMethod() . ' ' . $request->getUri()->getPath();
+      if ($requestPath === 'GET /users/1') {
+        $state = \Drupal::state();
+        $state->set('sso_dashboards_test.rest_requests', $state->get('sso_dashboards_test.rest_requests', 0) + 1);
+      }
       $fixtures = dirname(__DIR__, 3) . '/fixtures';
-      return match ($request->getMethod() . ' ' . $request->getUri()->getPath()) {
+      return match ($requestPath) {
         'GET /users/1' => new Response(200, [], file_get_contents($fixtures . '/user.json')),
         'POST /CountryInfoService.wso' => $request->getHeaderLine('SOAPAction') === '"https://soap-service-free.mock.beeceptor.com/CountryInfoService.wso/ListOfCountryNamesByName"'
           && str_contains((string) $request->getBody(), 'xmlns:country="https://soap-service-free.mock.beeceptor.com/CountryInfoService"')

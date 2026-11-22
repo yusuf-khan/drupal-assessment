@@ -1,203 +1,170 @@
-# Drupal Assessment
+# Drupal Auth0 SSO Assessment
 
-This Drupal 11 assessment uses Auth0 sign-in to assign Drupal roles and
-open one of two role-gated dashboards. The member dashboard reads a sample
-user from JSONPlaceholder. The exhibitor dashboard reads country names and
-ISO codes from the Beeceptor Country Information SOAP mock. See the
-[reviewed module plan](module-plan.md) and [AI development log](agent-logs.md).
+A Drupal 11 prototype with Auth0 sign-in, role-based dashboard access, and
+server-side REST and SOAP integrations. See the [module plan](module-plan.md)
+and [AI development log](agent-logs.md).
 
-## Run locally
+## Architecture
 
-Install Git, Docker, and [DDEV](https://ddev.com/get-started/). The included
-DDEV configuration uses PHP 8.4 and MariaDB 11.8. The project uses Drupal 11.4
-and Drush 13.8 or later in the 13.x series. Exact Composer dependency versions
-are recorded in `composer.lock`.
+```mermaid
+flowchart TD
+    A["Drupal login page"] --> B["Auth0 Universal Login"]
+    B --> C["Post Login Action adds roles to the ID token"]
+    C --> D["Drupal verifies the token and creates or loads the account"]
+    D --> E{"Sync roles and choose dashboard"}
+    E -->|member| F["/dashboard/member"]
+    E -->|exhibitor| G["/dashboard/exhibitor"]
+    E -->|No dashboard role| H["Home with a status message"]
+    F -->|Member access check passes| I["JSONPlaceholder REST user"]
+    G -->|Exhibitor access check passes| J["Beeceptor SOAP country list"]
+    F -->|Access check fails| K["HTTP 403"]
+    G -->|Access check fails| K
+```
 
-From the root of your clone, run:
+Drupal checks the required role on every dashboard request, including direct
+visits. It caches validated public API results for 60 seconds and renders the
+current user's identity on each response. The APIs use HTTPS and require no
+credentials.
+
+## Environment and dependencies
+
+Install Git, Docker, and [DDEV](https://ddev.com/get-started/).
+
+| Component | Version |
+| --- | --- |
+| Drupal core | 11.4.13 |
+| PHP and database in DDEV | PHP 8.4 and MariaDB 11.8 |
+| Drush | 13.8.1 |
+| OpenID Connect | 3.x at commit `acc27bd` |
+| External Auth | 2.0.15, installed through OpenID Connect |
+
+Composer restores the exact dependency versions from `composer.lock`.
+
+## Setup and run
 
 ```sh
+git clone https://github.com/yusuf-khan/drupal-assessment.git
+cd drupal-assessment
 ddev start
 ddev composer install
 ddev launch
 ```
 
-On a fresh installation, complete Drupal's browser installer using the
-**Standard** profile and create a local administrator. Then enable the module:
+In the browser installer, choose **Standard** and create a local
+administrator. Then enable the module from the repository root.
 
 ```sh
 ddev drush en sso_dashboards -y
 ```
 
-The default site URL is `https://drupal-assessment.ddev.site`. Use
-`ddev describe` to check the URL and `ddev drush status` to check the Drupal
-installation. Composer restores Drupal and its dependencies from
-`composer.lock`. The repository includes the custom module, DDEV
-configuration, and test fixtures. Local credentials and the database are
-created separately for each installation.
+The site opens at `https://drupal-assessment.ddev.site`. The module creates
+the `member` and `exhibitor` roles if they are missing. Use `ddev describe`
+to confirm the site URL.
 
-## Preview the dashboards without Auth0
+## Module evaluation
 
-The automated suite below exercises both dashboards with fixture data and
-requires only DDEV. To try the pages in a browser with the configured live
-endpoints, create two local demo accounts on your fresh installation:
+- **OpenID Connect** powers the current implementation. Its Generic client
+  supports Auth0, account provisioning, login hooks, and provider logout. The
+  pinned revision supports strict ID-token validation for role assignments.
+- **Drupal OIDC Client** was evaluated for its signed-token validation and
+  realm management. OpenID Connect’s authorization hooks and login destination
+  API fit the dashboard flow.
+- **miniOrange SAML SP** is the target for a separate pilot. Its Composer
+  edition passed an isolated Drupal 11 install check. The assessment install
+  uses OpenID Connect. Mapping assertion roles per user and SAML Single Logout
+  require the licensed miniOrange edition.
+  [miniOrange plan comparison](https://plugins.miniorange.com/drupal-saml-single-sign-on-sso#pricing)
+
+## Auth0 and test users
+
+1. Create an Auth0 **Regular Web Application** with a database connection,
+   Authorization Code grant, and RS256 signing.
+2. Add `https://drupal-assessment.ddev.site/openid-connect/auth0` to **Allowed
+   Callback URLs** and `https://drupal-assessment.ddev.site/user/login` to
+   **Allowed Logout URLs**. Use your site's origin if it differs. Enable
+   RP-Initiated Logout discovery if the tenant omits `end_session_endpoint`.
+3. Create two test users with distinct email addresses. Assign `member` to
+   one and `exhibitor` to the other. Use emails that do not already belong to
+   local Drupal accounts.
+4. Create an Auth0 **Post Login** Action from
+   [post-login-roles.js](auth0/post-login-roles.js). Replace the client ID
+   placeholder, click **Deploy**, attach the Action under **Actions →
+   Triggers → Post Login**, and click **Apply**.
+
+If your Auth0 plan does not expose role assignments, use administrator-managed
+`app_metadata` with `{"roles":["member"]}` and `{"roles":["exhibitor"]}`.
+Set the Action's role source to `const roles = event.user.app_metadata?.roles;`.
+Both sources use the same Drupal mapping. [Auth0 plans](https://auth0.com/pricing)
+
+Copy `settings.local.php.example` to `web/sites/default/settings.local.php`
+on a fresh clone, then uncomment the local settings include in
+`web/sites/default/settings.php`. Supply `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`,
+and `AUTH0_CLIENT_SECRET` through the PHP process environment or fill the
+fallback values in the ignored local file. Use the tenant hostname without
+`https://` or a trailing slash. Keep local credentials out of Git.
+
+Run these commands once on a fresh installation. They create the Drupal
+client, enable first-login provisioning and logout, and keep automatic
+email-based linking disabled.
+
+```sh
+ddev drush php:eval '\Drupal\openid_connect\Entity\OpenIDConnectClientEntity::create(["id" => "auth0", "label" => "Auth0", "plugin" => "generic", "status" => TRUE])->save();'
+ddev drush config:set user.settings register admin_only -y
+ddev drush config:set openid_connect.settings override_registration_settings true --input-format=yaml -y
+ddev drush config:set openid_connect.settings connect_existing_users false --input-format=yaml -y
+ddev drush config:set openid_connect.settings end_session_enabled true --input-format=yaml -y
+ddev drush config:set openid_connect.settings redirect_logout /user/login -y
+ddev drush cr
+```
+
+Open `/user/login` in a private window and choose **Auth0** below the local
+form. Sign in as each user in turn. Visit the other role’s route directly
+and verify HTTP 403. Use **Log out** to end the Drupal and Auth0 sessions.
+
+## Role mapping and dashboards
+
+External Auth links the Auth0 subject to its Drupal account. After each
+successful login, the dashboard module reads the verified
+`https://sso-prototype.example/roles` ID-token claim. It adds matching
+dashboard roles and removes managed roles that are no longer assigned.
+Unrelated Drupal roles are preserved.
+
+| Drupal role | Destination | Live data |
+| --- | --- | --- |
+| `member` | `/dashboard/member` | JSONPlaceholder sample user's name, email, and company |
+| `exhibitor` | `/dashboard/exhibitor` | Beeceptor SOAP country names and ISO codes |
+
+With both roles, the default destination is the exhibitor dashboard.
+Without a dashboard role, Drupal redirects home with a status message.
+Configure role aliases, priority, or cache lifetime in
+[`sso_dashboards.settings`](web/modules/custom/sso_dashboards/config/install/sso_dashboards.settings.yml).
+For example, accept both `member` and `Customer` from Auth0 with:
+
+```sh
+ddev drush config:set sso_dashboards.settings role_mapping.member '[member, Customer]' --input-format=yaml -y
+```
+
+### Preview without Auth0
+
+Run these commands once to create local demo accounts and print one-time links.
+Open the two links in separate browser sessions.
 
 ```sh
 ddev drush user:create assessment_member --mail=member@example.test
 ddev drush user:role:add member assessment_member
 ddev drush user:create assessment_exhibitor --mail=exhibitor@example.test
 ddev drush user:role:add exhibitor assessment_exhibitor
+ddev drush user:login --name=assessment_member --no-browser dashboard/member
+ddev drush user:login --name=assessment_exhibitor --no-browser dashboard/exhibitor
 ```
 
-Generate a one-time sign-in link for each account in turn:
+## Validation results
 
-```sh
-ddev drush user:login --name=assessment_member
-ddev drush user:login --name=assessment_exhibitor
-```
-
-Open each link in a separate browser session. Visit `/dashboard/member` as
-the member and `/dashboard/exhibitor` as the exhibitor. The other dashboard
-should return HTTP 403.
-
-The standard Drupal username-and-password form at `/user/login` also
-redirects local member and exhibitor accounts to their dashboards. Local
-accounts without a dashboard role keep Drupal’s default destination. An
-explicit local `destination` takes precedence. This preview tests local roles,
-route access, and rendering. The Auth0 steps below exercise the login
-redirect, claim synchronization, and single sign-out.
-
-## Auth0 integration
-
-The module uses [Drupal OpenID Connect](https://www.drupal.org/project/openid_connect)
-with the Generic client. Composer pins revision `acc27bd` of the 3.x branch
-because it includes strict ID-token verification. OpenID Connect brings in
-External Auth transitively to associate Auth0's `sub` with a Drupal user in
-`authmap`. On first sign-in, OpenID Connect creates the Drupal account. On
-later sign-ins, it loads the same account by OpenID Connect client and subject. The
-custom module uses OpenID Connect hooks and declares only `openid_connect`
-as a module dependency. It reads roles from verified ID-token claims.
-Drupal creates the dashboard roles if their IDs are absent.
-
-The alternative Drupal OIDC Client module offered signed-token validation and
-realm management. OpenID Connect was chosen for its documented authorization
-hooks and configurable login destination. Its released 3.x alpha lacked the
-strict token verification needed to trust role grants, which is why the
-prototype pins a development revision. The custom module implements role
-reconciliation, dashboard selection, route access, and API rendering.
-
-### Configure Auth0
-
-1. Create a **Regular Web Application** in Auth0. Use Universal Login, an Auth0
-   database connection, RS256 signing, and the Authorization Code grant.
-2. Add `https://drupal-assessment.ddev.site/openid-connect/auth0` to Allowed
-   Callback URLs. Add
-   `https://drupal-assessment.ddev.site/user/login` to Allowed Logout
-   URLs. Use the actual Drupal origin if it differs. Enable RP-Initiated Logout
-   endpoint discovery if the tenant does not publish `end_session_endpoint`.
-   [Auth0 OIDC logout settings](https://auth0.com/docs/authenticate/login/logout/log-users-out-of-auth0)
-3. Create two test users. If Auth0 exposes role assignments in your tenant,
-   create the `member` and `exhibitor` roles under **User Management → Roles**
-   and assign one role to each test user from their **Roles** tab.
-4. Create an **Add Drupal Roles** Action for the Post Login trigger. Use the
-   [Auth0 Roles Action](auth0/post-login-roles.js) and replace the client ID
-   placeholder with the Drupal application's client ID. Click **Deploy**.
-   Under **Actions → Triggers → Post Login**, place the Action between
-   **Start** and **Complete**, then click **Apply**. Both steps matter. An
-   empty flow issues the ID token without the role claim.
-
-If your plan does not expose role assignments, store the role names in
-administrator-managed `app_metadata` instead. Set
-`{"roles":["member"]}` and `{"roles":["exhibitor"]}` on the two accounts.
-Change the Action's role source line to
-`const roles = event.user.app_metadata?.roles;`. The claim and Drupal
-mapping use the same contract. This approach uses one Action and avoids
-depending on trial-only RBAC features. Check the subscription for its
-current Actions and RBAC entitlements.
-[Auth0 plan comparison](https://auth0.com/pricing) ·
-[Auth0 role claim documentation](https://support.auth0.com/center/s/article/add-roles-and-permissions-to-the-id-token-using-actions)
-
-After a change, sign out and start a new Auth0 login. If Drupal only shows
-the **Authenticated user** role, check the Action binding, the exact claim
-name, and the configured role names before retrying.
-
-### Configure Drupal
-
-1. Run `cp settings.local.php.example web/sites/default/settings.local.php`
-   on a fresh clone. If you already have a local settings file, copy the
-   relevant overrides into it. Uncomment the local settings include
-   at the end of `web/sites/default/settings.php`. Set the three variables from
-   `.env.example` in the PHP process environment. For a local DDEV demo, you can
-   instead replace the three empty fallback values in the ignored
-   `settings.local.php` with the real values. Keep actual credentials in the
-   environment or that ignored file. The realm config exported from Drupal
-   contains no client secret when credentials are supplied via these overrides.
-2. Create the enabled Generic client on a fresh installation and configure
-   first-login provisioning:
-
-   ```sh
-   ddev drush php:eval '\Drupal\openid_connect\Entity\OpenIDConnectClientEntity::create(["id" => "auth0", "label" => "Auth0", "plugin" => "generic", "status" => TRUE])->save();'
-   ddev drush config:set user.settings register admin_only -y
-   ddev drush config:set openid_connect.settings override_registration_settings true --input-format=yaml -y
-   ddev drush config:set openid_connect.settings connect_existing_users false --input-format=yaml -y
-   ddev drush config:set openid_connect.settings end_session_enabled true --input-format=yaml -y
-   ddev drush config:set openid_connect.settings redirect_logout /user/login -y
-   ddev drush cr
-   ```
-
-   The registration override lets OpenID Connect create accounts on first
-   login while Drupal's local registration stays administrator-only. Use
-   Auth0 test email addresses that are distinct from existing Drupal email
-   addresses. Subsequent sign-ins use the same linked account. OpenID Connect's
-   strict verification checks the token before its claims are used for login.
-3. Visit `/user/login/openid_connect` and choose Auth0. To end both sessions,
-   use Drupal's **Log out** link. The local administrator can sign in at
-   `/user/login`.
-
-Both dashboard routes enforce the corresponding Drupal role, including for
-administrators and uid 1. Anonymous and wrong-role requests receive HTTP 403
-A dual-role user can open both dashboards
-and lands on the exhibitor dashboard by default. An empty or absent claim
-clears both managed roles and redirects home. To change the claim or role
-priority, update `sso_dashboards.settings`. Drupal shares successful public API results between dashboard users for
-60 seconds. Each response renders the signed-in identity from the current
-account. Endpoint and cache configuration changes invalidate the stored
-results. The exhibitor table is included in the initial HTML. A cold cache
-can wait for the upstream SOAP response.
-
-Set `cache_max_age` to `0` to bypass the data cache during validation.
-
-```sh
-ddev drush config:set sso_dashboards.settings cache_max_age 0 -y
-```
-
-Auth0 role names can differ from Drupal’s two dashboard role IDs. To map
-additional names, configure each Drupal dashboard role’s list of accepted
-Auth0 names. Matching is case-sensitive. For example:
-
-```sh
-ddev drush config:set sso_dashboards.settings role_mapping.member '[member, Customer]' --input-format=yaml -y
-ddev drush config:set sso_dashboards.settings role_mapping.exhibitor '[exhibitor, Trade Partner]' --input-format=yaml -y
-```
-
-Run `ddev drush updb -y` on existing installations. If you use custom Auth0 role
-names, redeploy the updated Action so it includes those names in the verified
-ID-token claim. The mapping is applied on the next Auth0 login.
-
-The exhibitor client sends SOAP 1.1 `ListOfCountryNamesByName` to Beeceptor
-with the action and request namespace declared by its WSDL. The mock response
-uses the original CountryInfo namespace, which the parser handles explicitly.
-Drupal calls both public APIs server-side over HTTPS without API keys. The
-clients reject redirects and unexpected response statuses. The member record
-is fictional sample data from JSONPlaceholder.
-[Beeceptor SOAP documentation](https://app.beeceptor.com/virtual-sandbox/soap-service-free) ·
-[Country Information WSDL](https://soap-service-free.mock.beeceptor.com/CountryInfoService?WSDL)
-
-## Verification
-
-Run the unit, kernel, and browser tests in DDEV. The tests use isolated database
-tables and HTTP fixtures. The DDEV run passed 12 tests with 85 assertions.
-The login kernel test exercises account creation and reuse with a mocked
-ID-token validator.
+The DDEV suite passed **12 tests with 86 assertions**. The browser test
+installs a fresh Drupal Standard site and enables the assessment module.
+The tests cover account provisioning, role reconciliation, redirects,
+access checks, caching, and API failure handling with fixtures. PHPUnit
+reported four deprecations from External Auth and its Views configuration.
 
 ```sh
 ddev exec env SIMPLETEST_BASE_URL=http://localhost \
@@ -205,43 +172,32 @@ ddev exec env SIMPLETEST_BASE_URL=http://localhost \
   vendor/bin/phpunit -c web/core web/modules/custom/sso_dashboards/tests/src
 ```
 
-| Check | Expected result | Evidence |
-| --- | --- | --- |
-| First and subsequent sign-ins | First sign-in creates the Drupal account. Subsequent sign-ins reuse it | Live Auth0 account creation confirmed. Kernel test covers repeated sign-in |
-| Member signs in with Auth0 | Drupal assigns `member` and opens `/dashboard/member` | Verified with the live Auth0 tenant. Member dashboard returned HTTP 200 and exhibitor dashboard returned HTTP 403 |
-| Exhibitor signs in with Auth0 | Drupal assigns `exhibitor` and opens `/dashboard/exhibitor` | Auth0-linked Drupal account has `exhibitor`. A fresh exhibitor sign-in and redirect replay is pending |
-| Member opens exhibitor URL | HTTP 403 | Browser test |
-| Exhibitor opens member URL | HTTP 403 | Browser test |
-| Anonymous opens either URL | HTTP 403 | Browser test |
-| Member dashboard | Shows the sample user's name, email and company | Browser test with REST fixture. The live Drupal client returned Leanne Graham, Sincere@april.biz, and Romaguera-Crona |
-| Exhibitor dashboard | Shows country names and ISO codes | Browser test with SOAP fixture. The live Drupal client returned 246 entries, starting with Åland Islands (AX) |
-| Auth0 logout | Both sessions end and dashboards return 403 | Live member test followed the Auth0 logout endpoint, returned to Drupal, and received 403 on both dashboards. Auth0 prompted for credentials on the next sign-in |
-| Auth0 role revoked | Next login removes the Drupal role | Kernel test with mocked ID-token validator. Live tenant validation pending |
-| Upstream outage | Dashboard returns HTTP 200 with a service-unavailable message | Browser test with simulated HTTP 503 |
+| Check | Result |
+| --- | --- |
+| Live Auth0 member | Assigned `member`, redirected to the member dashboard, HTTP 200 for member and 403 for exhibitor |
+| Live Auth0 logout | Ended both sessions. Both dashboards returned 403, and Auth0 prompted for credentials at the next login. |
+| Live APIs | REST returned Leanne Graham’s sample record. SOAP returned 246 countries. |
+| Direct URL access | Browser tests verified 403 for wrong-role and anonymous requests. |
 
-### Screenshot evidence
+The screenshots use local Drupal demo accounts and live API data.
+[Member dashboard](screenshots/member-dashboard.png) ·
+[Exhibitor dashboard](screenshots/exhibitor-dashboard.png) ·
+[Member denied exhibitor](screenshots/member-exhibitor-denied.png) ·
+[Exhibitor denied member](screenshots/exhibitor-member-denied.png) ·
+[Anonymous denied](screenshots/anonymous-member-denied.png)
 
-These screenshots use local Drupal demo accounts and live upstream API data.
-The browser also checked HTTP 403 for both dashboard URLs while anonymous.
+## Challenges and blockers
 
-- [Member dashboard with live REST data](screenshots/member-dashboard.png)
-- [Exhibitor dashboard with live SOAP data](screenshots/exhibitor-dashboard.png)
-- [Member denied exhibitor dashboard](screenshots/member-exhibitor-denied.png)
-- [Exhibitor denied member dashboard](screenshots/exhibitor-member-denied.png)
-- [Anonymous visitor denied member dashboard](screenshots/anonymous-member-denied.png)
-
-Live Auth0 account creation, member role mapping, redirect, access control,
-and logout were verified. A fresh exhibitor sign-in and logout replay and
-live role revocation remain in the validation checklist.
-
-## Submission notes
-
-A local DDEV database previously retained module registrations from an earlier
-prototype. The registry was backed up and repaired. A fresh installation uses
-the module's declared dependencies and needs no database import. An existing
-installation of this custom module can run `ddev drush updb -y` to migrate the
-original default SOAP URL to Beeceptor. A customized SOAP URL is preserved.
-
-Before sharing the repository, complete the live Auth0 checks in the table
-with the two Auth0 accounts. Share the repository URL, submission branch, and
-the output of `git rev-parse HEAD` with the interview team.
+- **Missing roles after sign-in.** The Auth0 Action was deployed but missing
+  from the Post Login flow. Applying the binding restored the role claim.
+- **Local database recovery.** An earlier prototype left stale module
+  registrations and a missing External Auth table. The local database was
+  repaired. Fresh installs create the required schema automatically.
+- **Pending live checks.** The linked exhibitor account has the correct
+  Drupal role. A fresh exhibitor sign-in and logout replay and a live role
+  revocation check remain pending.
+- **SAML cutover.** The miniOrange target requires the licensed edition and
+  a separate Auth0 SAML application. The live prototype uses OpenID Connect.
+  The [SAML Post Login Action](auth0/post-login-saml-roles.js) and
+  [cutover plan](module-plan.md#10-miniorange-saml-pilot-with-auth0) are
+  available for that evaluation.

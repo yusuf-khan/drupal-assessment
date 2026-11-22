@@ -13,9 +13,11 @@ use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 final class DashboardTest extends BrowserTestBase {
 
   protected static $modules = ['sso_dashboards', 'sso_dashboards_test'];
+  protected $profile = 'standard';
   protected $defaultTheme = 'stark';
 
   public function testDashboards(): void {
+    $this->assertSame('below', $this->config('openid_connect.settings')->get('user_login_display'));
     $this->drupalGet('dashboard/member');
     $this->assertSession()->statusCodeEquals(403);
     $this->drupalGet('dashboard/exhibitor');
@@ -33,7 +35,7 @@ final class DashboardTest extends BrowserTestBase {
     $this->assertSession()->pageTextContains('Sample Company');
     $this->drupalGet('dashboard/member');
     $this->assertSession()->statusCodeEquals(200);
-    $this->assertSame(1, $this->container->get('keyvalue')->get('state')->get('sso_dashboards_test.requests'));
+    $this->assertSame(1, $this->container->get('keyvalue')->get('state')->get('sso_dashboards_test.rest_requests'));
 
     $secondMember = $this->drupalCreateUser();
     $secondMember->addRole('member')->save();
@@ -41,7 +43,7 @@ final class DashboardTest extends BrowserTestBase {
     $this->assertSession()->pageTextContains($secondMember->getAccountName());
     $this->assertSession()->pageTextNotContains($member->getAccountName());
     $this->assertSession()->pageTextContains('Sample Company');
-    $this->assertSame(1, $this->container->get('keyvalue')->get('state')->get('sso_dashboards_test.requests'));
+    $this->assertSame(1, $this->container->get('keyvalue')->get('state')->get('sso_dashboards_test.rest_requests'));
     $this->drupalGet('dashboard/exhibitor');
     $this->assertSession()->statusCodeEquals(403);
 
