@@ -128,14 +128,14 @@ the issuer and endpoints at `/admin/config/people/openid-connect`.
 
 ### Reviewer test accounts
 
-Use these accounts with the bundled Auth0 application. Obtain the test
-passwords from the submitter through a private channel. For a fresh local
-install, also obtain the application's client secret for `.auth0-client-secret`.
+You can test Auth0 login with the two accounts I created below. Contact me
+privately for their passwords and, for a fresh local install, the application
+client secret for `.auth0-client-secret`.
 
-| Auth0 username | Role | Expected destination | Direct request returns HTTP 403 |
-| --- | --- | --- | --- |
-| `khany762@gmail.com` | Member | `/dashboard/member` | `/dashboard/exhibitor` |
-| `nkhanyusuf338@gmail.com` | Exhibitor | `/dashboard/exhibitor` | `/dashboard/member` |
+| Auth0 username | Password | Role | Expected destination | Direct request returns HTTP 403 |
+| --- | --- | --- | --- | --- |
+| `khany762@gmail.com` | 8Mile@789yusra123 | Member | `/dashboard/member` | `/dashboard/exhibitor` |
+| `nkhanyusuf338@gmail.com` | 8Mile@789yusra123 | Exhibitor | `/dashboard/exhibitor` | `/dashboard/member` |
 
 Open `/user/login` in a private browser window and choose **Auth0**. Confirm
 that sign-in opens the expected dashboard and that visiting the other
