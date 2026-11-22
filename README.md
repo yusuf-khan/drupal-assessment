@@ -54,6 +54,7 @@ git clone https://github.com/yusuf-khan/drupal-assessment.git
 cd drupal-assessment
 ddev start
 ddev composer install
+ddev drush site:install standard --account-name=admin --account-pass=admin -y
 ddev launch
 ```
 
