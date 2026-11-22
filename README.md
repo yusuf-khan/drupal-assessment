@@ -175,7 +175,8 @@ ddev exec env SIMPLETEST_BASE_URL=http://localhost \
 | Check | Result |
 | --- | --- |
 | Live Auth0 member | Assigned `member`, redirected to the member dashboard, HTTP 200 for member and 403 for exhibitor |
-| Live Auth0 logout | Ended both sessions. Both dashboards returned 403, and Auth0 prompted for credentials at the next login. |
+| Live Auth0 exhibitor | Assigned `exhibitor`, redirected to the exhibitor dashboard, HTTP 200 for exhibitor and 403 for member |
+| Live Auth0 logout | Both accounts returned to Drupal after Auth0 logout. Both dashboards returned 403 in each logged-out session. |
 | Live APIs | REST returned Leanne Graham’s sample record. SOAP returned 246 countries. |
 | Direct URL access | Browser tests verified 403 for wrong-role and anonymous requests. |
 
@@ -193,9 +194,8 @@ The screenshots use local Drupal demo accounts and live API data.
 - **Local database recovery.** An earlier prototype left stale module
   registrations and a missing External Auth table. The local database was
   repaired. Fresh installs create the required schema automatically.
-- **Pending live checks.** The linked exhibitor account has the correct
-  Drupal role. A fresh exhibitor sign-in and logout replay and a live role
-  revocation check remain pending.
+- **Pending live check.** Role revocation is covered by the automated
+  login test. Live revocation has yet to be verified.
 - **SAML cutover.** The miniOrange target requires the licensed edition and
   a separate Auth0 SAML application. The live prototype uses OpenID Connect.
   The [SAML Post Login Action](auth0/post-login-saml-roles.js) and
