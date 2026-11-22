@@ -111,21 +111,18 @@ If your Auth0 plan does not expose role assignments, use administrator-managed
 Set the Action's role source to `const roles = event.user.app_metadata?.roles;`.
 Both sources use the same Drupal mapping. [Auth0 plans](https://auth0.com/pricing)
 
-The configuration export includes the Auth0 OpenID Connect client. To keep
-credentials out of exported configuration, create
-`web/sites/default/settings.secret.php` locally with the Auth0 Client ID and
-Client Secret:
+The configuration export includes the Auth0 OpenID Connect client. On a new
+checkout, copy the [credentials template](settings.secret.php.example) from
+the repository root:
 
-```php
-<?php
-$config['openid_connect.client.auth0']['settings']['client_id'] = 'YOUR_AUTH0_CLIENT_ID';
-$config['openid_connect.client.auth0']['settings']['client_secret'] = 'YOUR_AUTH0_CLIENT_SECRET';
+```sh
+cp -n settings.secret.php.example web/sites/default/settings.secret.php
 ```
 
-Replace the placeholders locally. The checked-in `settings.php` loads this
-ignored file, which supplies the credentials at runtime. If you use a different
-Auth0 tenant, update the issuer and endpoints in the Auth0 client settings at
-`/admin/config/people/openid-connect`.
+Open `web/sites/default/settings.secret.php`, replace the placeholders with
+your Auth0 Client ID and Client Secret, and run `ddev drush cr`. Git ignores
+this local file. If you use a different Auth0 tenant, update the issuer and
+endpoints in the Auth0 client settings at `/admin/config/people/openid-connect`.
 
 If credentials were previously saved in active Drupal configuration, populate
 the local file first and then clear the saved values before exporting.
