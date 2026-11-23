@@ -1,11 +1,111 @@
-# Drupal Auth0 SSO Assessment
+# Drupal practical assessments
 
-A Drupal 11 prototype with Auth0 sign-in, role-based dashboard access, and
-server-side REST and SOAP integrations. OpenAI Codex was the primary coding
-agent. See the [reviewed module plan](module-plan.md) and
-[AI development log](agent-logs.md) for decisions, review, and validation.
+Both assessments are on branch `main`. They use separate Drupal installations, Composer dependencies, and DDEV databases. OpenAI Codex was the primary coding agent. See the [AI development log](agent-logs.md) for the implementation and review milestones.
 
-## Architecture
+| Assessment | Project directory | DDEV URL | Reviewer guide |
+| --- | --- | --- | --- |
+| Drupal CMS, SDC, and Canvas | Repository root | `https://drupal-canvas-assessment.ddev.site` | [Install Canvas](#install-from-scratch) · [Validation](#canvas-validation-results) |
+| Drupal 11 and Auth0 SSO | `auth0-assessment/` | `https://drupal-assessment.ddev.site` | [Install Auth0](#install-the-auth0-assessment-from-config) · [Auth0 setup and validation](auth0-assessment/README.md) |
+
+
+## Drupal CMS, SDC, and Canvas
+
+The Specialty Food prototype uses Drupal CMS 2.2.10, Drupal core 11.4.13, Canvas 1.13.0, Canvas Full HTML 1.0.6, and Drush 13.8.1. The local environment used DDEV 1.25.5, PHP 8.4.27, and MariaDB 11.8. Composer restores the PHP dependencies from the lockfile.
+
+### Setup and run
+
+From the repository root, start DDEV and install dependencies.
+
+```bash
+git clone --branch main https://github.com/yusuf-khan/drupal-canvas-assessment.git
+cd drupal-canvas-assessment
+ddev start
+ddev composer install
+ddev drush site:install --existing-config --db-url=mysql://db:db@db/db --account-name=admin -y
+ddev exec --dir /var/www/html/web php core/scripts/dr recipe /var/www/html/demo/sfa-homepage
+ddev launch
+```
+
+The config installs the modules and theme. The recipe imports the published Winter FancyFaire page and media. Open the front page or `/winter-fancyfaire` in a signed-out browser and check for the event hero and four cards.
+
+For an installation that already uses `sfa_theme`, use the [existing demo update steps](#update-an-existing-canvas-demo). Drupal requires a matching site UUID for `ddev drush config:import`.
+
+### Review the page in Canvas
+
+1. Run `ddev drush user:login` and open the generated local sign-in link.
+2. Go to **Content → Pages → Winter FancyFaire → Edit**.
+3. In **Layers**, expand **Event hero → Desktop buttons** or **Card group → Cards** and select a child component to inspect its settings.
+
+#### Set up a test editor
+
+As the local administrator, create a new active user under **People → Add user** and assign **Content editor**. That role has access to create, edit, and publish Canvas pages and use the Canvas Full HTML text format. Sign in as this user in a private window and follow the steps below.
+
+#### Compose the design in Canvas
+
+1. Open **Content → Pages → Add Page** and set the title and an unused alias in **Page data**.
+2. In **Library → Components → Specialty Food**, add **Event hero** and **Card group**. Add **Button link** instances to the hero’s **Desktop buttons** slot. Use **Mobile buttons** when the mobile labels or destinations differ.
+3. Add four **Audience card** instances to the **Cards** slot. Configure the Maker, Buyer, Distributor, and Service Provider cards with photos and icons from the Media Library.
+4. In **Review changes**, select the new page and publish. Open its URL in a signed-out window.
+
+#### Optional Auth0 sign-in on the Canvas site
+
+The Canvas configuration export includes the Auth0 dashboard module and its
+Generic client in strict ID-token validation mode. On a separate Starter
+installation, run `ddev drush en sso_dashboards -y` to enable this setup. Canvas
+editor access continues to use the Drupal **Content editor** role.
+
+For the bundled Auth0 application, add these URLs in Auth0:
+
+- **Allowed Callback URLs** `https://drupal-canvas-assessment.ddev.site/openid-connect/auth0`
+- **Allowed Logout URLs** `https://drupal-canvas-assessment.ddev.site/user/login`
+
+The tracked `web/sites/default/settings.secret.php` loads local credentials.
+For a fresh setup, add the Auth0 client secret to a one-line
+`.auth0-client-secret` file in the Canvas project root. If you use local PHP
+overrides, put them in `web/sites/default/settings.credentials.php`. The
+loader uses that file when it exists. Git ignores both credential files.
+
+Run `ddev drush cr`, then choose **Auth0** at `/user/login`. Configure a
+different application at `/admin/config/people/openid-connect`. See the
+[Auth0 role mapping guide](#auth0-and-test-users)
+for the Post Login Action and test accounts.
+
+### Component design
+
+- **Single Directory Components** live in the [Specialty Food theme](web/themes/custom/sfa_theme/components). Eyebrow, Title, Description, and Button link are reusable atoms.
+- **Canvas** stores the page composition and the children in each slot. The Event hero uses H1 semantics and places buttons in desktop and mobile slots. Container controls width and vertical padding. Card group controls direction, spacing, cards per row, and alignment.
+- **Canvas Full HTML and Media Library** provide rich-text authoring and image selection. The hero’s two-line heading uses a CKEditor soft line break.
+
+See the [component specifications](component-specs.md) for props, defaults, responsive behavior, and the additional local page compositions.
+
+### Canvas validation results
+
+| Check | Result |
+| --- | --- |
+| Fresh install | Installed from the tracked config on a fresh DDEV database, applied the demo recipe, and verified the published front page. |
+| Editor workflow | A Content editor created a page, configured components and media, and published it. The draft was private and the published page opened anonymously. |
+| Responsive layout | Checked 1920, 1366, 1024, 768, and 390px in Chromium without horizontal overflow. At 1920px, the hero measured 584px tall and the four cards measured 318px each with 24px gaps. |
+
+[Published desktop page](screenshots/published-desktop.png) · [Canvas editor](screenshots/canvas-editor.png)
+
+The reference pairs a 2028 title with a January 2027 date. Both values stay editable. Button and resource destinations use demo anchors. Network access is required for Adobe Fonts and Font Awesome Free 6.7.2. See the [development log](agent-logs.md) for the Canvas schema and publication fixes.
+
+### Update an existing Canvas demo
+
+On an existing installation that already uses the `sfa_theme` components, migrate saved layouts and drafts to the simplified hero fields and button slots.
+
+```bash
+ddev drush cache:rebuild
+ddev exec --dir /var/www/html/web /var/www/html/vendor/bin/drush php:script /var/www/html/scripts/migrate-canvas-layout-fields.php
+ddev drush cache:rebuild
+```
+
+## Auth0 SSO assessment
+
+This Drupal 11 prototype signs users in with Auth0, reconciles their roles,
+and serves role-protected dashboards. See the [reviewed module plan](module-plan.md).
+
+### Auth0 architecture
 
 ```text
 Drupal login page
@@ -32,7 +132,7 @@ Drupal synchronizes roles and chooses the destination
 Drupal checks the required role on every dashboard request, including direct
 visits.
 
-## Environment and dependencies
+### Auth0 environment and dependencies
 
 Install Git, Docker, and [DDEV](https://ddev.com/get-started/).
 
@@ -47,36 +147,8 @@ Install Git, Docker, and [DDEV](https://ddev.com/get-started/).
 
 Composer restores the exact dependency versions from `composer.lock`.
 
-## Setup and run
 
-```sh
-git clone https://github.com/yusuf-khan/drupal-assessment.git
-cd drupal-assessment
-ddev start
-ddev composer install
-ddev drush site:install --existing-config --db-url=mysql://db:db@db/db --account-name=admin -y
-ddev launch
-ddev drush cr
-```
-
-Run the install command on a new DDEV database. Drupal installs the modules,
-the Auth0 client, and both dashboard roles from `config/sync`. Drush prints the
-local administrator credentials. Use `ddev describe` to confirm the site URL,
-which defaults to `https://drupal-assessment.ddev.site`.
-
-### Configuration synchronization
-
-Drupal reads `config/sync` from the repository root. On a site installed from
-this export, run `ddev drush config:status` to see differences and
-`ddev drush config:import` to review and import changes. The same screen is
-available at **Configuration → Development → Configuration synchronization**
-(`/admin/config/development/configuration`).
-
-Drupal requires a matching site UUID to import the full export. Supply the
-Auth0 client secret through the ignored runtime file so it stays out of
-configuration exports.
-
-## Module evaluation
+### Auth0 module evaluation
 
 - **OpenID Connect** powers the current implementation. Its Generic client
   supports Auth0, account provisioning, login hooks, and provider logout.
@@ -91,7 +163,7 @@ configuration exports.
   assessment.
   [miniOrange plan comparison](https://plugins.miniorange.com/drupal-saml-single-sign-on-sso#pricing)
 
-## Auth0 and test users
+### Auth0 and test users
 
 1. Create an Auth0 **Regular Web Application** with a database connection,
    Authorization Code grant, and RS256 signing.
@@ -103,7 +175,7 @@ configuration exports.
    one and `exhibitor` to the other. Use emails that do not already belong to
    local Drupal accounts.
 4. Create an Auth0 **Post Login** Action from
-   [post-login-roles.js](auth0/post-login-roles.js). Replace the client ID
+   [post-login-roles.js](auth0-assessment/auth0/post-login-roles.js). Replace the client ID
    placeholder, click **Deploy**, attach the Action under **Actions →
    Triggers → Post Login**, and click **Apply**.
 
@@ -117,16 +189,16 @@ on trial access to Role Management. It still needs a live replay on a Free
 tenant. [Auth0 plan comparison](https://auth0.com/pricing)
 
 The configuration export includes the Auth0 OpenID Connect client.
-`web/sites/default/settings.secret.php` supplies the public Client ID for the
-bundled Auth0 application. Create `.auth0-client-secret` at the repository root
+`auth0-assessment/web/sites/default/settings.secret.php` supplies the public Client ID for the
+bundled Auth0 application. Create `auth0-assessment/.auth0-client-secret`
 and put the current Auth0 Client Secret on a single line. Git ignores this
 file. Run `ddev drush cr` after updating it.
 
 For a different Auth0 application, update the public Client ID in
-`web/sites/default/settings.secret.php`. For a different tenant, also update
+`auth0-assessment/web/sites/default/settings.secret.php`. For a different tenant, also update
 the issuer and endpoints at `/admin/config/people/openid-connect`.
 
-### Reviewer test accounts
+#### Reviewer test accounts
 
 You can test Auth0 login with the two accounts I created below. Contact me
 privately for their passwords and, for a fresh local install, the application
@@ -134,15 +206,15 @@ client secret for `.auth0-client-secret`.
 
 | Auth0 username | Password | Role | Expected destination | Direct request returns HTTP 403 |
 | --- | --- | --- | --- | --- |
-| `khany762@gmail.com` | 8Mile@789yusra123 | Member | `/dashboard/member` | `/dashboard/exhibitor` |
-| `nkhanyusuf338@gmail.com` | 8Mile@789yusra123 | Exhibitor | `/dashboard/exhibitor` | `/dashboard/member` |
+| `khany762@gmail.com` | Shared privately | Member | `/dashboard/member` | `/dashboard/exhibitor` |
+| `nkhanyusuf338@gmail.com` | Shared privately | Exhibitor | `/dashboard/exhibitor` | `/dashboard/member` |
 
 Open `/user/login` in a private browser window and choose **Auth0**. Confirm
 that sign-in opens the expected dashboard and that visiting the other
 dashboard directly returns HTTP 403. Select **Log out** and confirm that
 both dashboards return HTTP 403. Repeat with the other account.
 
-## Role mapping and dashboards
+### Role mapping and dashboards
 
 External Auth links the Auth0 subject to its Drupal account. After each
 successful login, the dashboard module reads the verified
@@ -158,9 +230,9 @@ Unrelated Drupal roles are preserved.
 With both roles, the default destination is the exhibitor dashboard.
 Without a dashboard role, Drupal redirects home with a status message.
 Configure role aliases, priority, or cache lifetime in
-[`sso_dashboards.settings`](web/modules/custom/sso_dashboards/config/install/sso_dashboards.settings.yml).
+[`sso_dashboards.settings`](auth0-assessment/web/modules/custom/sso_dashboards/config/install/sso_dashboards.settings.yml).
 
-### External APIs
+#### External APIs
 
 - The member dashboard sends a server-side `GET /users/1` to JSONPlaceholder.
   It displays the fictional user's name, email, and company. [REST endpoint](https://jsonplaceholder.typicode.com/users/1)
@@ -171,7 +243,7 @@ Configure role aliases, priority, or cache lifetime in
 Both public HTTPS services require no API key. Drupal caches validated results
 for 60 seconds and renders the signed-in user's identity on each response.
 
-## Validation results
+### Auth0 validation results
 
 The DDEV suite passed **12 tests with 86 assertions**. The browser test
 installs a fresh Drupal Standard site and enables the assessment module.
@@ -197,29 +269,26 @@ ddev exec env SIMPLETEST_BASE_URL=http://localhost \
 | Direct URL access | Browser tests verified 403 for wrong-role and anonymous requests. |
 
 The screenshots use local Drupal demo accounts and live API data.
-[Member dashboard](screenshots/member-dashboard.png) ·
-[Exhibitor dashboard](screenshots/exhibitor-dashboard.png) ·
-[Member denied exhibitor](screenshots/member-exhibitor-denied.png) ·
-[Exhibitor denied member](screenshots/exhibitor-member-denied.png) ·
-[Anonymous denied](screenshots/anonymous-member-denied.png)
+[Member dashboard](auth0-assessment/screenshots/member-dashboard.png) ·
+[Exhibitor dashboard](auth0-assessment/screenshots/exhibitor-dashboard.png) ·
+[Member denied exhibitor](auth0-assessment/screenshots/member-exhibitor-denied.png) ·
+[Exhibitor denied member](auth0-assessment/screenshots/exhibitor-member-denied.png) ·
+[Anonymous denied](auth0-assessment/screenshots/anonymous-member-denied.png)
 
-## Challenges and blockers
+### Auth0 challenges and blockers
 
-- **Missing roles after sign-in.** The Auth0 Action was deployed but missing
-  from the Post Login flow. Applying the binding restored the role claim.
-- **Local database recovery.** An earlier prototype left stale module
-  registrations and a missing External Auth table. The local database was
-  repaired. Fresh installs create the required schema automatically.
-- **Pending live check.** Role revocation is covered by the automated
-  login test. Live revocation has yet to be verified.
-- **Credential rotation.** The live Auth0 results above predate the current
-  credential issue. An application secret was committed to Git. Rotate it in
-  Auth0, remove the secret assignment from tracked settings, supply the fresh
-  value through `.auth0-client-secret`, and replay both logins before submission.
+#### Resolved during development
+
+- **Missing roles after sign-in.** The deployed Auth0 Action had to be attached
+  to the Post Login flow. Applying the binding restored the role claim.
+- **Fresh install failed with duplicate configuration.** OpenID Connect owns
+  `openid_connect.settings`. The custom module applies its defaults in an
+  install hook, and the fresh install from `config/sync` passed.
+- **Missing External Auth table.** Stale local module registrations left the
+  `authmap` table missing. The local database was repaired, and fresh installs
+  create the table automatically.
+
 
 ## Submission
 
-The submission branch is `main`. Run `git rev-parse HEAD` on the final
-reviewed commit, then share that SHA and the repository URL privately with
-the interview team. Confirm reviewers can access the repository.
-[Assessment repository](https://github.com/yusuf-khan/drupal-assessment)
+Share the [repository](https://github.com/yusuf-khan/drupal-canvas-assessment), branch `main`, and the output of `git rev-parse HEAD` for the final reviewed commit. Share any reviewer credentials privately.
