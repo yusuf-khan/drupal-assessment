@@ -119,7 +119,7 @@ sso_dashboards.exhibitor:
 
 - `DashboardController::member()` / `::exhibitor()` return render arrays: a heading, a definition list (member) or an `<ul>`/table (exhibitor). Plain text is enough.
 - Show the Drupal username and role at the top for validation screenshots.
-- Error handling: catch client exceptions, log via `logger.channel.sso_dashboards`, render a friendly "service unavailable" message with HTTP 200 (not a fatal error).
+- Error handling: catch client exceptions, log to the `sso_dashboards` channel, and render a friendly "service unavailable" message with HTTP 200.
 - Caching: share only validated public results with a 60-second Drupal cache lifetime. Render the current user identity on each request. Set `cache_max_age` to 0 to bypass the data cache.
 - Escape all remote data (render via `#plain_text` / Twig autoescape).
 

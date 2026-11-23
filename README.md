@@ -39,7 +39,7 @@ Install Git, Docker, and [DDEV](https://ddev.com/get-started/).
 | Component | Version |
 | --- | --- |
 | DDEV | 1.25.5 used for local testing |
-| Drupal core | 11.4.13 |
+| Drupal core | 11.4.13 tested. The custom module requires 11.1 or later in the 11.x series for attribute-based hooks. |
 | PHP and database in DDEV | PHP 8.4 and MariaDB 11.8 |
 | Drush | 13.8.1 |
 | OpenID Connect | 3.x at commit `acc27bd` |
@@ -176,8 +176,10 @@ for 60 seconds and renders the signed-in user's identity on each response.
 The DDEV suite passed **12 tests with 86 assertions**. The browser test
 installs a fresh Drupal Standard site and enables the assessment module.
 The tests cover account provisioning, role reconciliation, redirects,
-access checks, caching, and API failure handling with fixtures. PHPUnit
-reported four deprecations from External Auth and its Views configuration.
+access checks, caching, and API failure handling with fixtures. PHPUnit also
+reported four upstream deprecations from External Auth and its Views
+configuration. Some of the deprecated APIs are scheduled for removal in
+Drupal 12. Recheck External Auth compatibility before a core upgrade.
 
 ```sh
 ddev exec env SIMPLETEST_BASE_URL=http://localhost \

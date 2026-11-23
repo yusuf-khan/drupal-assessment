@@ -9,21 +9,14 @@ sso_dashboards.settings:
       type: string
       label: 'Namespaced ID token role claim'
     role_mapping:
-      type: mapping
+      type: sequence
       label: 'Auth0 role names by Drupal dashboard role'
-      mapping:
-        member:
-          type: sequence
-          label: 'Auth0 roles granting the member dashboard'
-          sequence:
-            type: string
-            label: 'Auth0 role name'
-        exhibitor:
-          type: sequence
-          label: 'Auth0 roles granting the exhibitor dashboard'
-          sequence:
-            type: string
-            label: 'Auth0 role name'
+      sequence:
+        type: sequence
+        label: 'Auth0 roles granting the dashboard'
+        sequence:
+          type: string
+          label: 'Auth0 role name'
     redirect_priority:
       type: sequence
       label: 'Dashboard redirect priority'

@@ -44,7 +44,11 @@ final class LoginFlowTest extends KernelTestBase {
     ]);
 
     $this->config('sso_dashboards.settings')
-      ->set('role_mapping', ['member' => ['Customer'], 'exhibitor' => ['Trade Partner']])
+      ->set('role_mapping', [
+        'member' => ['Customer'],
+        'exhibitor' => ['Trade Partner'],
+        'reviewer' => ['Reviewer'],
+      ])
       ->save();
     $claims = [
       'sub' => 'auth0|sample',
